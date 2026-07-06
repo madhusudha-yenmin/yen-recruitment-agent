@@ -1,0 +1,99 @@
+# State Machine Design
+
+## Overview
+
+The Autonomous Hiring Agent uses LangGraph as its stateful orchestration engine.
+Instead of calling micro-agents sequentially, every agent operates on a shared state object under the control of the **Recruitment Orchestrator Agent**.
+
+Each agent:
+- Reads the current state
+- Performs its domain responsibility
+- Updates the shared state
+- Returns control to the Orchestrator
+
+This architecture provides:
+- Checkpoint recovery & persistence
+- Human-in-the-Loop (HITL) interrupt handling
+- Parallel execution capabilities
+- Retry handling with exponential backoff
+- Persistent Agent memory & auditability
+
+---
+
+# Global Workflow
+
+```
+Start
+  ↓
+Recruitment Orchestrator Agent (Initializes State)
+  ↓
+Candidate Discovery Agent (JD Analysis, LinkedIn Query, Search, Resume Parsing)
+  ↓
+Candidate Assessment Agent (Multi-dimensional Match Scoring & Ranking)
+  ↓
+Interview Agent (Question Gen, Interactive Turns, Evaluation & Report)
+  ↓
+Hiring Decision Agent (Comparative Analytics & Human Approval Wait)
+  ↓
+[INTERRUPT: Recruiter Review on Dashboard]
+  ↓
+Hiring Decision Agent (Offer Letter / Rejection Email Dispatch)
+  ↓
+End
+```
+
+---
+
+# Shared Graph State
+
+Every agent receives the same shared state managed by the Orchestrator:
+
+```python
+RecruitmentState {
+    session_id: str,
+    job: JobStateSection,
+    discovery: DiscoveryStateSection,
+    candidates: List[CandidateStateSection],
+    selected_candidate: Optional[CandidateStateSection],
+    interview: InterviewStateSection,
+    evaluation: EvaluationStateSection,
+    report: ReportStateSection,
+    decision: DecisionStateSection,
+    approval: ApprovalStateSection,
+    notification: NotificationStateSection,
+    logs: List[AgentLogSection],
+    metadata: MetadataSection
+}
+```
+
+---
+
+# State Sections
+
+## Job
+- Title, Description, Skills, Experience, Salary, Notice Period, Location, Responsibilities
+
+## Discovery
+- LinkedIn Boolean Query, Sourced Candidate Count, Normalized Profiles, Vector Embeddings
+
+## Candidate
+- Resume Text, Parsed Profile, Skills, Education, Projects, Experience Years, Match Score, Ranking
+
+## Interview
+- Questions, Transcript, Audio/Video URLs, Conversation History, Current Turn Index
+
+## Decision & Approval
+- Comparative Analytics, HR Decision Status (pending/approved/rejected/hold), Reviewer ID, Comments
+
+---
+
+# Checkpoints & HITL
+
+Every major stage saves a state checkpoint in PostgreSQL:
+- Discovery Completed
+- Assessment & Ranking Completed
+- Interview Completed
+- Waiting Human Approval (HITL Interrupt)
+- Decision & Notification Sent
+
+When the workflow reaches the **Hiring Decision Agent**, execution pauses automatically before dispatching offers. When the recruiter submits their review on the dashboard, state transitions to `approved` or `rejected`, and execution resumes seamlessly!

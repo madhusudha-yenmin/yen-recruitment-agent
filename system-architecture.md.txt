@@ -1,0 +1,47 @@
+# System Architecture
+
+The system follows a streamlined 5-Agent Agentic AI architecture orchestrated by LangGraph.
+
+```
+                    Recruiter / HR Manager
+                             │
+                             ▼
+                   React Next.js Dashboard
+                             │
+                     FastAPI REST Backend
+                             │
+                  LangGraph Runtime Engine
+                             │
+     ──────────────────────────────────────────────────
+             Recruitment Orchestrator Agent
+     ──────────────────────────────────────────────────
+                             │
+         ┌───────────────────┼───────────────────┐
+         │                   │                   │
+         ▼                   ▼                   ▼
+ Candidate Discovery  Candidate Assessment  Interview Agent
+ Agent                Agent                 (Questions, Chat/Voice,
+ (JD Analysis, Query, (JD vs Resume Match   Evaluation & Report)
+  Search, Parse)       & Ranking)
+         │                   │                   │
+         └───────────────────┼───────────────────┘
+                             ▼
+                   Hiring Decision Agent
+          (Comparative Analytics, HITL Approval Wait,
+           Offer Letter & Rejection Automation)
+     ──────────────────────────────────────────────────
+                             │
+        ┌────────────────────┼────────────────────┐
+        ▼                    ▼                    ▼
+   PostgreSQL             Redis               pgvector
+ (Checkpoints)        (LLM Caching)      (Resume Embeddings)
+```
+
+---
+
+## Architecture Style
+
+- **5-Agent Hierarchy**: Central Orchestrator delegating to Discovery, Assessment, Interview, and Hiring Decision agents.
+- **Stateful Orchestration**: LangGraph checkpointing for crash recovery and asynchronous resumption.
+- **Human-in-the-Loop**: Native interrupt handling before binding hiring actions (offer letters).
+- **High Efficiency**: Redis caching layer reducing LLM token consumption and latency.

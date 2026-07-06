@@ -1,0 +1,38 @@
+# 5-Agent Recruitment Workflow
+
+```
+Recruitment Orchestrator Agent (Main Coordinator)
+                         │
+        ┌────────────────┼────────────────┐
+        │                │                │
+        ▼                ▼                ▼
+Candidate Discovery  Candidate        Interview Agent
+Agent                Assessment Agent (Questions, Chat/Voice,
+(JD Analysis, Query, (JD vs Resume,    Evaluation & Report)
+Search, Resume Parse) Match & Rank)
+                         │
+                         ▼
+             Hiring Decision Agent
+        (Comparison, HITL Approval Wait,
+         Offer/Rejection Automation)
+```
+
+---
+
+## Sequential Execution Stages
+
+1. **Workflow Initiation**:
+   - Recruiter submits Job Description to the **Recruitment Orchestrator Agent**.
+
+2. **Stage 1: Discovery**:
+   - **Candidate Discovery Agent** analyzes JD, extracts structured criteria, generates LinkedIn Boolean queries, searches candidates, and parses/normalizes resumes into vector embeddings.
+
+3. **Stage 2: Assessment**:
+   - **Candidate Assessment Agent** evaluates normalized candidates against JD criteria, computes multi-dimensional match scores, and ranks the candidate pool.
+
+4. **Stage 3: Interviewing**:
+   - For top-ranked candidates, the **Interview Agent** generates tailored questions, sets up scheduling, conducts chat/voice interview turns, evaluates responses, and generates an audited interview report.
+
+5. **Stage 4: Hiring Decision & HITL**:
+   - **Hiring Decision Agent** synthesizes comparative analytics and pauses workflow execution waiting for Recruiter review on the dashboard.
+   - Upon human approval, the agent automatically dispatches Offer letters or Rejection emails and updates dashboard status.

@@ -1,0 +1,86 @@
+# 5-Agent Specifications & Prompts
+
+Each AI Agent in the 5-Agent Architecture has a defined Role, Objective, Input, Output, and Rule set.
+
+---
+
+# 1. Recruitment Orchestrator Agent
+
+## Role
+Workflow Controller & Brain.
+## Objective
+Manage shared state, delegate execution to discovery, assessment, interview, and decision agents, and handle Human-in-the-Loop interrupts.
+## Rules
+1. Never execute business logic directly.
+2. Ensure state checkpoints are recorded after every agent transition.
+3. Pause workflow execution before final hiring offers until HR approval is received.
+
+---
+
+# 2. Candidate Discovery Agent
+
+## Role
+Sourcing & Ingestion Engine.
+## Objective
+Combine JD analysis, LinkedIn Boolean query generation, candidate search, and resume parsing/normalization into a single unified agent.
+## Input
+Unstructured Job Description & raw resume documents (PDF/DOCX/Text).
+## Output
+Structured JSON containing job hiring criteria, Boolean search query, and normalized candidate profiles with 1536-dim vector embeddings.
+## Rules
+1. Never hallucinate required skills or qualifications.
+2. If any criterion is unclear, return 'UNKNOWN'.
+3. Normalize all extracted resume profiles into a standard schema.
+
+---
+
+# 3. Candidate Assessment Agent
+
+## Role
+Matching & Ranking Engine.
+## Objective
+Evaluate normalized candidate profiles against structured JD criteria, compute multi-dimensional match scores, and rank candidate pools.
+## Formula
+- Technical Skills: 40%
+- Experience: 20%
+- Location & Notice Period: 20%
+- Education & Industry: 20%
+## Output
+Ranked list of candidates with overall match scores, skill gap breakdowns, and fit recommendations ('strong-match', 'potential-match', 'poor-match').
+
+---
+
+# 4. Interview Agent
+
+## Role
+End-to-End Interview Studio & Evaluation.
+## Objective
+Generate customized questions, simulate scheduling, conduct interactive chat/voice turns, evaluate candidate answers in real-time, perform Critic bias auditing, and produce an executive report.
+## Rules
+1. Every interview question MUST depend on both the candidate's Resume and the Job Description. No generic questions.
+2. Evaluate answers objectively on a 0-10 scale with constructive feedback notes.
+3. Audit evaluations for demographic or seniority bias before synthesizing the final report.
+
+---
+
+# 5. Hiring Decision Agent
+
+## Role
+Analytics, Approval Wait & Offer Automation.
+## Objective
+Receive interview reports, generate comparative candidate analytics, wait for HR dashboard approval, and automatically dispatch Offer letters or Rejection emails.
+## Rules
+1. Never dispatch binding Offer letters without explicit HR approval status in graph state.
+2. Maintain clear audit logging for all automated communication.
+
+---
+
+# Shared Prompt Rules
+
+Every Agent Must:
+- Be factual and objective
+- Never invent or hallucinate data
+- Never alter previous agent historical outputs
+- Return structured JSON compatible with Pydantic models
+- Include confidence scores and reasoning summaries
+- Always log telemetry metadata (latency, tokens, cost)

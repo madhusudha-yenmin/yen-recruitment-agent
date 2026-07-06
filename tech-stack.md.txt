@@ -1,0 +1,139 @@
+# Technology Stack
+
+## Frontend
+
+React
+
+TypeScript
+
+TailwindCSS
+
+ShadCN UI
+
+React Query
+
+React Hook Form
+
+Zustand
+
+Framer Motion
+
+---
+
+## Backend
+
+Python
+
+FastAPI
+
+Pydantic
+
+SQLAlchemy
+
+Alembic
+
+---
+
+## Agent Framework
+
+LangGraph
+
+LangChain
+
+OpenAI SDK
+
+Instructor
+
+PydanticAI (optional)
+
+---
+
+## Database
+
+PostgreSQL
+
+Redis
+
+---
+
+## Vector Database
+
+ChromaDB
+
+FAISS
+
+---
+
+## Resume Parsing
+
+PyMuPDF
+
+pdfplumber
+
+python-docx
+
+OCR (Tesseract)
+
+---
+
+## Authentication
+
+JWT
+
+OAuth2
+
+Google Login
+
+---
+
+## AI Models
+
+GPT-5.5
+
+Embedding Model
+
+Whisper
+
+TTS Model
+
+---
+
+## Scheduling
+
+Google Calendar API
+
+Microsoft Outlook API
+
+---
+
+## Email
+
+SMTP
+
+SendGrid
+
+---
+
+## Monitoring
+
+LangSmith
+
+Grafana
+
+Prometheus
+
+ELK
+
+---
+
+## Deployment
+
+Docker
+
+Docker Compose
+
+Kubernetes
+
+NGINX
+
+GitHub Actions

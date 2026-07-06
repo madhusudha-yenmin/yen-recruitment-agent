@@ -1,0 +1,66 @@
+# Autonomous Hiring Agent
+
+## Project Vision
+
+Build an enterprise-grade Autonomous Hiring Agent capable of automating the complete recruitment lifecycle using Agentic AI.
+
+The platform should minimize manual recruiter effort while maintaining Human-in-the-Loop approval for all hiring decisions.
+
+Unlike traditional ATS systems, this platform uses multiple autonomous AI agents that communicate, collaborate, verify information, and make recommendations before presenting results to recruiters.
+
+---
+
+# Objectives
+
+The system should:
+
+- Understand Job Descriptions
+- Parse resumes
+- Search candidates from multiple sources
+- Rank candidates
+- Schedule interviews
+- Generate interview questions
+- Conduct AI Interviews
+- Evaluate candidates
+- Generate hiring reports
+- Assist recruiters in decision making
+
+The AI should NEVER make final hiring decisions.
+
+Final approval always belongs to Human Recruiters.
+
+---
+
+# Business Goals
+
+- Reduce recruiter workload by 90%
+- Improve hiring accuracy
+- Standardize evaluation
+- Remove manual resume screening
+- Improve candidate experience
+- Reduce hiring time
+- Enable AI-driven recruiting
+
+---
+
+# Target Users
+
+- HR Teams
+- Recruiters
+- Hiring Managers
+- Interview Panels
+- Candidates
+
+---
+
+# Core Features
+
+- Resume Parsing
+- Job Analysis
+- Candidate Matching
+- AI Interview
+- Candidate Ranking
+- Interview Scheduling
+- Email Automation
+- Analytics Dashboard
+- Human Approval Workflow

@@ -1,0 +1,75 @@
+# 5-Agent AI Recruitment Architecture
+
+The platform uses a streamlined, commercial-grade 5-Agent Architecture orchestrated by LangGraph.
+
+---
+
+## 1. Recruitment Orchestrator Agent (Main Agent)
+
+**Role**: The Brain & Workflow Controller.
+**Responsibilities**:
+- Receives Job Description (JD)
+- Initializes and starts the LangGraph workflow
+- Delegates execution to specialized agents
+- Stores and checkpoints shared graph state
+- Pauses execution waiting for Human-in-the-Loop (HR/Recruiter) approval
+- Resumes execution upon approval
+**Rule**: It never performs business logic or evaluation itself; it only coordinates.
+
+---
+
+## 2. Candidate Discovery Agent
+
+**Role**: Sourcing & Ingestion Engine.
+**Responsibilities**:
+- Analyze unstructured JD and extract structured hiring criteria (skills, experience, salary, location)
+- Generate targeted LinkedIn Boolean search queries
+- Search candidate pools (LinkedIn, internal databases, referrals)
+- Parse resumes (PDF, DOCX, OCR images)
+- Normalize and structure candidate profile information and compute 1536-dim vector embeddings
+**Internal Tools**:
+- LinkedIn Search Tool
+- Resume Parser Tool
+- OCR Extraction Tool
+- LLM Analysis Tool
+
+---
+
+## 3. Candidate Assessment Agent
+
+**Role**: Matching & Ranking Engine.
+**Responsibilities**:
+- Compare JD requirements against normalized candidate resumes
+- Calculate multi-dimensional match scores:
+  - Technical Skill Match (40%)
+  - Experience Match (20%)
+  - Location & Notice Period Match (20%)
+  - Education & Industry Match (20%)
+- Rank candidate pool from highest to lowest fit and identify skill gaps
+
+---
+
+## 4. Interview Agent
+
+**Role**: End-to-End Interview Studio.
+**Responsibilities**:
+- Generate customized interview questions tailored to JD and candidate resume
+- Simulate interview scheduling and session setup
+- Conduct interactive Chat interviews
+- Conduct interactive Voice interviews
+- Evaluate candidate responses in real-time
+- Perform fairness and bias auditing (Critic pattern)
+- Produce comprehensive executive interview reports
+
+---
+
+## 5. Hiring Decision Agent
+
+**Role**: Analytics, Approval Wait & Offer Automation.
+**Responsibilities**:
+- Receive all interview reports and candidate evaluations
+- Generate comparative candidate analytics and recommendation summaries
+- Wait for HR/Recruiter approval via dashboard interrupt
+- Dispatch automated Offer letters upon approval
+- Dispatch automated Rejection/Follow-up emails upon rejection/hold
+- Update live dashboard state and notifications

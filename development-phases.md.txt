@@ -1,0 +1,75 @@
+# Development Roadmap
+
+Phase 1
+
+Authentication
+
+Dashboard
+
+Job Management
+
+Database
+
+---
+
+Phase 2
+
+Resume Upload
+
+Resume Parsing
+
+Vector Database
+
+---
+
+Phase 3
+
+Candidate Matching
+
+Ranking
+
+Reports
+
+---
+
+Phase 4
+
+Interview Agent
+
+Voice
+
+Chat
+
+Evaluation
+
+---
+
+Phase 5
+
+Scheduling
+
+Emails
+
+Notifications
+
+---
+
+Phase 6
+
+Analytics
+
+Monitoring
+
+Logs
+
+---
+
+Phase 7
+
+Production Deployment
+
+Docker
+
+Kubernetes
+
+CI/CD
