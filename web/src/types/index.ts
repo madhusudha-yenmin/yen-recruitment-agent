@@ -1,5 +1,8 @@
 export type UserRole = 'hr' | 'candidate';
 
+export type HRTab = 'overview' | 'upload-jd' | 'ranking' | 'interviews' | 'questionnaire' | 'approvals' | 'score-definition';
+export type CandidateTab = 'overview' | 'availability' | 'studio';
+
 export interface User {
   id: string;
   name: string;
@@ -10,6 +13,13 @@ export interface User {
   techStack?: string[];
   experienceYears?: number;
   avatarUrl?: string;
+  availability?: {
+    days: string[];
+    timeSlots: string[];
+    timezone: string;
+    isConfirmed?: boolean;
+  };
+  interviewStatus?: 'Scheduled' | 'Pending';
 }
 
 export type AuthView = 'signin' | 'signup' | 'forgot-password' | 'reset-password';
@@ -37,6 +47,9 @@ export interface CandidateMatch {
   location: string;
   status: 'Pending HR Review' | 'Offer Sent' | 'Rejected' | 'Hold';
   recommendation: 'strong-hire' | 'hire' | 'no-hire';
+  interviewStatus: 'Scheduled' | 'Pending';
+  interviewDate?: string;
+  interviewMode?: 'AI Chat Studio' | 'AI Voice Studio';
   evaluationDetails?: {
     technical: number;
     communication: number;
