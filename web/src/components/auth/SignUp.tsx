@@ -1,15 +1,14 @@
 "use client";
 
 import React, { useState } from 'react';
-import { User, UserRole, AuthView } from '../../types';
+import { UserRole, AuthView } from '../../types';
 
 interface SignUpProps {
   role: UserRole;
-  onLogin: (user: User) => void;
   onNavigate: (view: AuthView) => void;
 }
 
-export const SignUp: React.FC<SignUpProps> = ({ role, onLogin, onNavigate }) => {
+export const SignUp: React.FC<SignUpProps> = ({ role, onNavigate }) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,11 +20,12 @@ export const SignUp: React.FC<SignUpProps> = ({ role, onLogin, onNavigate }) => 
   // Candidate specific
   const [techStack, setTechStack] = useState('Python, FastAPI, PostgreSQL, Docker');
   const [experience, setExperience] = useState('5');
-  
+
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !email || !password) {
       setError('Please fill in all required fields.');
@@ -38,32 +38,51 @@ export const SignUp: React.FC<SignUpProps> = ({ role, onLogin, onNavigate }) => 
 
     setLoading(true);
     setError('');
+    setSuccess('');
 
-    setTimeout(() => {
-      setLoading(false);
-      if (role === 'hr') {
-        onLogin({
-          id: 'hr-' + Math.floor(Math.random() * 1000),
-          name: name,
-          email: email,
-          role: 'hr',
-          company: company || 'YEN Enterprise',
-          department: department || 'Talent Acquisition',
-          avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'
-        });
-      } else {
-        const skillsArray = techStack.split(',').map(s => s.trim()).filter(Boolean);
-        onLogin({
-          id: 'cand-' + Math.floor(Math.random() * 1000),
-          name: name,
-          email: email,
-          role: 'candidate',
-          techStack: skillsArray.length ? skillsArray : ['Python', 'FastAPI', 'System Design'],
-          experienceYears: parseFloat(experience) || 4.0,
-          avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80'
-        });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+
+      // Map frontend role to backend UserRole enum
+      const backendRole = role === 'hr' ? 'recruiter' : 'candidate';
+
+      const res = await fetch(`${apiUrl}/api/v1/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          email,
+          password,
+          role: backendRole,
+        }),
+        signal: controller.signal,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.detail || 'Registration failed. Please try again.');
+        return;
       }
-    }, 700);
+
+      // Registration successful — navigate to Sign In (NOT dashboard)
+      setSuccess('Account created! Redirecting to Sign In...');
+      setTimeout(() => {
+        onNavigate('signin');
+      }, 1200);
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        setError('Request timed out — the backend server is not responding. Please start it on port 8000.');
+      } else {
+        setError('Cannot connect to backend — make sure the server is running on port 8000.');
+      }
+    } finally {
+      clearTimeout(timeout);
+      setLoading(false);
+    }
   };
 
   return (
@@ -78,6 +97,15 @@ export const SignUp: React.FC<SignUpProps> = ({ role, onLogin, onNavigate }) => 
             : 'Join AI interview studios & get matched with top AI engineering teams'}
         </p>
       </div>
+
+      {success && (
+        <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center space-x-2">
+          <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>{success}</span>
+        </div>
+      )}
 
       {error && (
         <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center space-x-2">

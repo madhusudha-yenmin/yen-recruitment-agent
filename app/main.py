@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.router import api_router
+import app.db.base  # Register all models for SQLAlchemy
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
