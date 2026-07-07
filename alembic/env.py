@@ -19,7 +19,7 @@ if config.config_file_name is not None:
 logger = logging.getLogger("alembic.env")
 
 # Override sqlalchemy.url in config with settings.SYNC_DATABASE_URL
-config.set_main_option("sqlalchemy.url", settings.SYNC_DATABASE_URL)
+config.set_main_option("sqlalchemy.url", settings.SYNC_DATABASE_URL.replace("%", "%%"))
 
 target_metadata = Base.metadata
 
