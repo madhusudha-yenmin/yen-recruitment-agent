@@ -33,11 +33,13 @@ export default function Home() {
   const handleLogin = (newUser: User) => {
     setUser(newUser);
     localStorage.setItem('yen_user_session', JSON.stringify(newUser));
+    // JWT token is already saved in localStorage by SignIn.tsx
   };
 
   const handleSignOut = () => {
     setUser(null);
     localStorage.removeItem('yen_user_session');
+    localStorage.removeItem('yen_access_token');
   };
 
   if (isLoading) {

@@ -12,18 +12,7 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
-try:
-    import pgvector  # type: ignore # noqa
-    import pgvector.sqlalchemy  # type: ignore # noqa
-    vector_type = pgvector.sqlalchemy.Vector(1536)
-except ImportError:
-    from sqlalchemy.types import UserDefinedType
-    class Vector(UserDefinedType):
-        def __init__(self, dim=None):
-            self.dim = dim
-        def get_col_spec(self, **kw):
-            return f"vector({self.dim})" if self.dim else "vector"
-    vector_type = Vector(1536)
+vector_type = postgresql.ARRAY(sa.Float())
 
 # revision identifiers, used by Alembic.
 revision: str = '0001_initial_schema'
@@ -34,7 +23,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # Ensure pgvector extension is enabled
-    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    pass # op.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
     # Create companies table
     op.create_table(
@@ -60,7 +49,7 @@ def upgrade() -> None:
 
     # Create UserRole enum type in postgres
     user_role_enum = sa.Enum('ADMIN', 'RECRUITER', 'CANDIDATE', name='userrole')
-    user_role_enum.create(op.get_bind(), checkfirst=True)
+    # user_role_enum.create(op.get_bind(), checkfirst=True)
 
     # Create users table
     op.create_table(

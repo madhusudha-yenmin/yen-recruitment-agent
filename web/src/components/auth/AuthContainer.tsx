@@ -73,7 +73,7 @@ export const AuthContainer: React.FC<AuthContainerProps> = ({ onLogin }) => {
 
           {/* Conditional View Rendering */}
           {view === 'signin' && <SignIn role={role} onLogin={onLogin} onNavigate={setView} />}
-          {view === 'signup' && <SignUp role={role} onLogin={onLogin} onNavigate={setView} />}
+          {view === 'signup' && <SignUp role={role} onNavigate={setView} />}
           {view === 'forgot-password' && <ForgotPassword onNavigate={setView} />}
           {view === 'reset-password' && <ResetPassword onNavigate={setView} />}
         </div>

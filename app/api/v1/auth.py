@@ -30,7 +30,7 @@ async def get_current_user(
     if user_id is None:
         raise credentials_exception
 
-    result = await db.execute(select(User).where(User.id == user_id, User.is_deleted == False))
+    result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user is None:
         raise credentials_exception
@@ -64,7 +64,7 @@ async def login_access_token(
     form_data: OAuth2PasswordRequestForm = Depends()
 ) -> Any:
     """OAuth2 compatible token login, get an access token for future requests."""
-    result = await db.execute(select(User).where(User.email == form_data.username, User.is_deleted == False))
+    result = await db.execute(select(User).where(User.email == form_data.username))
     user = result.scalar_one_or_none()
     if not user or not verify_password(form_data.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Incorrect email or password")
@@ -81,7 +81,7 @@ async def login_json(
     db: AsyncSession = Depends(get_db)
 ) -> Any:
     """JSON body login endpoint."""
-    result = await db.execute(select(User).where(User.email == login_data.email, User.is_deleted == False))
+    result = await db.execute(select(User).where(User.email == login_data.email))
     user = result.scalar_one_or_none()
     if not user or not verify_password(login_data.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Incorrect email or password")

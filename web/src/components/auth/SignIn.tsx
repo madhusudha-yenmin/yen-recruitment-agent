@@ -26,7 +26,7 @@ export const SignIn: React.FC<SignInProps> = ({ role, onLogin, onNavigate }) => 
     setError('');
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
       setError('Please enter both email and password.');
@@ -36,30 +36,66 @@ export const SignIn: React.FC<SignInProps> = ({ role, onLogin, onNavigate }) => 
     setLoading(true);
     setError('');
 
-    setTimeout(() => {
-      setLoading(false);
-      if (role === 'hr') {
-        onLogin({
-          id: 'hr-001',
-          name: 'Sarah Jenkins',
-          email: email,
-          role: 'hr',
-          company: 'YEN AI Global',
-          department: 'Talent Acquisition & Orchestration',
-          avatarUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80'
-        });
-      } else {
-        onLogin({
-          id: 'cand-001',
-          name: 'Alice Smith',
-          email: email,
-          role: 'candidate',
-          techStack: ['Python', 'FastAPI', 'PostgreSQL', 'Docker', 'LangGraph'],
-          experienceYears: 6.0,
-          avatarUrl: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80'
-        });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+
+      // Step 1: Login — get JWT token
+      const loginRes = await fetch(`${apiUrl}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+        signal: controller.signal,
+      });
+
+      const loginData = await loginRes.json();
+
+      if (!loginRes.ok) {
+        setError(loginData.detail || 'Invalid email or password.');
+        setLoading(false);
+        return;
       }
-    }, 600);
+
+      const token: string = loginData.access_token;
+      localStorage.setItem('yen_access_token', token);
+
+      // Step 2: Fetch the real user profile
+      const meRes = await fetch(`${apiUrl}/api/v1/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: controller.signal,
+      });
+
+      if (!meRes.ok) {
+        setError('Failed to load user profile. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      const meData = await meRes.json();
+
+      // Map backend role (recruiter/candidate/admin) → frontend UserRole (hr/candidate)
+      const frontendRole: 'hr' | 'candidate' =
+        meData.role === 'recruiter' || meData.role === 'admin' ? 'hr' : 'candidate';
+
+      onLogin({
+        id: String(meData.id),
+        name: meData.name,
+        email: meData.email,
+        role: frontendRole,
+        company: meData.company_id ? `Company #${meData.company_id}` : undefined,
+      });
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        setError('Request timed out — the backend server is not responding. Please start it on port 8000.');
+      } else {
+        setError('Cannot connect to backend — make sure the server is running on port 8000.');
+      }
+    } finally {
+      clearTimeout(timeout);
+      setLoading(false);
+    }
   };
 
   return (
