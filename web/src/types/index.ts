@@ -39,6 +39,7 @@ export interface CandidateMatch {
   id: string;
   name: string;
   email: string;
+  linkedinUrl?: string;
   matchScore: number;
   ranking: number;
   skills: string[];

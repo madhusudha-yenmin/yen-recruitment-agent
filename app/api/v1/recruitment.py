@@ -20,6 +20,40 @@ class ApprovalDecisionRequest(BaseModel):
     comments: Optional[str] = None
 
 
+class SerperSearchRequest(BaseModel):
+    job_title: str
+    experience: str
+    location: str
+    keywords: Optional[str] = ""
+
+
+from app.agents.discovery import discover_candidates
+
+@router.post("/serper-search", status_code=status.HTTP_200_OK)
+async def perform_serper_search(req: SerperSearchRequest) -> Dict[str, Any]:
+    """Performs LinkedIn Serper Search and returns raw candidates, bypassing LLM parsing."""
+    # 1. Discover
+    discovery_res = await discover_candidates(
+        job_title=req.job_title, 
+        experience=req.experience,
+        location=req.location,
+        custom_keywords=req.keywords
+    )
+    if discovery_res.status == "error":
+        raise HTTPException(status_code=500, detail=discovery_res.reasoning_summary)
+    
+    job_criteria = discovery_res.data.job_criteria
+    candidates_list = discovery_res.data.parsed_candidates  # Contains raw candidates now
+    
+    return {
+        "status": "success",
+        "query_used": discovery_res.data.linkedin_boolean_query,
+        "job_criteria": job_criteria.model_dump(),
+        "candidates": candidates_list
+    }
+
+
+
 @router.post("/start", status_code=status.HTTP_202_ACCEPTED)
 async def start_recruitment_pipeline(req: StartRecruitmentRequest) -> Dict[str, Any]:
     """Starts a new end-to-end recruitment multi-agent workflow."""

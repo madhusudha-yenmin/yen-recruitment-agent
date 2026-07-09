@@ -1,11 +1,7 @@
-import os
 import logging
-import random
 from typing import List, Optional, Dict, Any
+import httpx
 from pydantic import BaseModel, Field
-import pymupdf
-import openai
-import instructor
 from app.core.config import settings
 from app.agents.base import AgentResponse, compute_cache_key, get_cached_llm_response, save_cached_llm_response
 
@@ -42,20 +38,20 @@ class SkillItem(BaseModel):
 
 
 class EducationItem(BaseModel):
-    degree: str
-    institution: str
+    degree: Optional[str] = Field(default="UNKNOWN")
+    institution: Optional[str] = Field(default="UNKNOWN")
     year: Optional[str] = None
 
 
 class ExperienceItem(BaseModel):
-    title: str
-    company: str
+    title: Optional[str] = Field(default="UNKNOWN")
+    company: Optional[str] = Field(default="UNKNOWN")
     duration: Optional[str] = None
     description: Optional[str] = None
 
 
 class ProjectItem(BaseModel):
-    title: str
+    title: Optional[str] = Field(default="UNKNOWN")
     description: Optional[str] = None
     technologies: List[str] = Field(default_factory=list)
 
@@ -116,17 +112,42 @@ async def generate_embedding(text: str) -> List[float]:
         return generate_mock_embedding(text)
 
 
+import re
+
 def _get_fallback_job_criteria(job_description: str) -> JobCriteria:
-    title = "Senior AI Backend Engineer" if "AI" in job_description or "Backend" in job_description else "Software Engineer"
+    jd_lower = job_description.lower()
+    
+    title = "Software Engineer"
+    if "react" in jd_lower:
+        title = "React Developer"
+    elif "ai" in jd_lower or "backend" in jd_lower:
+        title = "Senior AI Backend Engineer"
+        
+    location = "Remote"
+    loc_match = re.search(r'located in ([a-zA-Z\s]+)', jd_lower)
+    if loc_match:
+        location = loc_match.group(1).strip().title()
+    elif "chennai" in jd_lower:
+        location = "Chennai"
+    elif "bangalore" in jd_lower:
+        location = "Bangalore"
+    elif "trichy" in jd_lower:
+        location = "Trichy"
+        
+    exp = "5+ years"
+    match = re.search(r'(\d+)\s*\+?\s*years?', jd_lower)
+    if match:
+        exp = f"{match.group(1)}+ years"
+        
     return JobCriteria(
         title=title,
-        required_skills=["Python", "FastAPI", "PostgreSQL", "Docker", "LangGraph"],
-        preferred_skills=["Redis", "React", "Next.js"],
-        experience="5+ years",
-        salary="$130,000 - $160,000",
-        location="Remote",
+        required_skills=["React", "JavaScript", "Python"],
+        preferred_skills=[],
+        experience=exp,
+        salary="Negotiable",
+        location=location,
         notice_period="30 days",
-        education="Bachelor's in Computer Science or equivalent"
+        education="Bachelor's in Computer Science"
     )
 
 
@@ -152,225 +173,123 @@ def _get_fallback_candidate_profile(raw_text: str, embedding_vec: List[float]) -
     )
 
 
-async def analyze_job_description_tool(job_description: str) -> AgentResponse[JobCriteria]:
-    """Internal Tool: Analyzes unstructured JD and extracts structured hiring criteria."""
-    if not job_description or not job_description.strip():
-        return AgentResponse(
-            status="error",
-            confidence=0,
-            reasoning_summary="Empty job description provided.",
-            errors=["Job description cannot be empty."]
-        )
-
-    cache_key = compute_cache_key("job_analyst", job_description)
-    cached_data = await get_cached_llm_response(cache_key)
-    if cached_data:
-        criteria = JobCriteria.model_validate(cached_data["data"])
-        return AgentResponse(
-            status="success",
-            confidence=cached_data.get("confidence", 95),
-            reasoning_summary="Retrieved structured job analysis from Redis cache.",
-            data=criteria
-        )
-
-    fallback_criteria = _get_fallback_job_criteria(job_description)
-
-    if not settings.OPENAI_API_KEY or settings.OPENAI_API_KEY.startswith("sk-..."):
-        response = AgentResponse(
-            status="success",
-            confidence=90,
-            reasoning_summary="Analyzed JD using heuristic fallback rule set (API key not set).",
-            data=fallback_criteria
-        )
-        await save_cached_llm_response(cache_key, response.model_dump())
-        return response
-
-    try:
-        client = instructor.from_openai(openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY))
-        prompt = f"""
-You are an expert Candidate Discovery Agent analyzing a Job Description.
-Extract structured hiring criteria. Never hallucinate. If unclear, return 'UNKNOWN'.
-Job Description:
-{job_description}
-"""
-        criteria: JobCriteria = await client.chat.completions.create(
-            model=settings.DEFAULT_LLM_MODEL,
-            response_model=JobCriteria,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.1,
-        )
-        response = AgentResponse(
-            status="success",
-            confidence=95,
-            reasoning_summary="Successfully extracted structured hiring criteria via LLM.",
-            data=criteria
-        )
-        await save_cached_llm_response(cache_key, response.model_dump())
-        return response
-    except Exception as exc:
-        logger.warning(f"LLM Job Analysis failed ({exc}); returning heuristic fallback.")
-        return AgentResponse(
-            status="success",
-            confidence=85,
-            reasoning_summary=f"LLM extraction unavailable ({str(exc)}); used heuristic fallback rule set.",
-            data=fallback_criteria
-        )
-
-
-def generate_linkedin_query_tool(criteria: JobCriteria) -> str:
+def generate_linkedin_query_tool(criteria: JobCriteria, custom_keywords: str = "") -> str:
     """Internal Tool: Generates a targeted LinkedIn Boolean search query from job criteria."""
-    skills = [s for s in criteria.required_skills if s and s != "UNKNOWN"]
-    title_part = f'("{criteria.title}")' if criteria.title and criteria.title != "UNKNOWN" else ""
-    skills_part = " AND ".join([f'"{s}"' for s in skills[:4]]) if skills else ""
+    if custom_keywords:
+        return f"site:linkedin.com/in {custom_keywords}"
+        
+    title_part = f'"{criteria.title}"' if criteria.title and criteria.title != "UNKNOWN" else ""
+    location_part = criteria.location if criteria.location and criteria.location != "UNKNOWN" else ""
+    # Remove strict quotes around experience to allow broader matching and fetch more profiles
+    experience_part = criteria.experience if criteria.experience and criteria.experience != "UNKNOWN" else ""
     
-    if title_part and skills_part:
-        return f'{title_part} AND ({skills_part})'
-    return title_part or skills_part or '("Software Engineer") AND ("Python")'
+    parts = ['site:linkedin.com/in']
+    if title_part:
+        parts.append(title_part)
+    if location_part:
+        parts.append(location_part)
+    if experience_part:
+        parts.append(experience_part)
+        
+    query = " ".join(parts)
+    if len(parts) == 1:
+        query = 'site:linkedin.com/in "Software Engineer" "Python"'
+    return query
 
 
-def search_candidates_tool(query: str, criteria: JobCriteria) -> List[Dict[str, Any]]:
-    """Internal Tool: Searches candidate pools (simulated/sourced resumes) matching query."""
-    return [
-        {
-            "candidate_id": "cand-001",
-            "name": "Alice Smith",
-            "email": "alice.smith@example.com",
-            "raw_resume_text": "Alice Smith. Senior Python Engineer with 6 years of experience building high-performance APIs using FastAPI, PostgreSQL, Docker, Redis, and LangGraph. Built multi-agent LLM systems."
-        },
-        {
-            "candidate_id": "cand-002",
-            "name": "Charlie Brown",
-            "email": "charlie.brown@example.com",
-            "raw_resume_text": "Charlie Brown. Full Stack Engineer with 4 years of experience using Python, Django, PostgreSQL, and Docker. Currently exploring LangGraph and autonomous LLM workflows."
-        },
-        {
-            "candidate_id": "cand-003",
-            "name": "Bob Jones",
-            "email": "bob.jones@example.com",
-            "raw_resume_text": "Bob Jones. Frontend Developer with 2 years of experience in React, Next.js, and Tailwind CSS. Familiar with basic Python and REST APIs."
-        }
-    ]
-
-
-async def parse_resume_tool(resume_text_or_path: str) -> AgentResponse[CandidateProfile]:
-    """Internal Tool: Parses resume (PDF or text) into structured CandidateProfile and embedding vector."""
-    if resume_text_or_path.endswith(".pdf") and os.path.exists(resume_text_or_path):
-        raw_text = extract_text_from_pdf(resume_text_or_path)
-    else:
-        raw_text = resume_text_or_path
-
-    if not raw_text or not raw_text.strip():
-        return AgentResponse(
-            status="error",
-            confidence=0,
-            reasoning_summary="Empty resume text provided.",
-            errors=["Resume content cannot be empty."]
-        )
-
-    cache_key = compute_cache_key("resume_parser", raw_text)
-    cached_data = await get_cached_llm_response(cache_key)
-    if cached_data:
-        profile = CandidateProfile.model_validate(cached_data["data"])
-        return AgentResponse(
-            status="success",
-            confidence=cached_data.get("confidence", 95),
-            reasoning_summary="Retrieved structured resume profile from Redis cache.",
-            data=profile
-        )
-
-    embedding_vec = await generate_embedding(raw_text)
-    fallback_profile = _get_fallback_candidate_profile(raw_text, embedding_vec)
-
-    if not settings.OPENAI_API_KEY or settings.OPENAI_API_KEY.startswith("sk-..."):
-        response = AgentResponse(
-            status="success",
-            confidence=92,
-            reasoning_summary="Parsed resume using fallback extraction rules (API key not set).",
-            data=fallback_profile
-        )
-        await save_cached_llm_response(cache_key, response.model_dump())
-        return response
+async def search_candidates_tool(query: str, criteria: JobCriteria) -> List[Dict[str, Any]]:
+    if not settings.SERPER_API_KEY:
+        logger.warning("SERPER_API_KEY not set.")
+        return []
 
     try:
-        client = instructor.from_openai(openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY))
-        prompt = f"""
-You are an expert Candidate Discovery Agent parsing a raw resume.
-Extract comprehensive structured candidate information. Estimate total years of experience accurately based on dates. Never hallucinate.
-Resume Text:
-{raw_text}
-"""
-        profile: CandidateProfile = await client.chat.completions.create(
-            model=settings.DEFAULT_LLM_MODEL,
-            response_model=CandidateProfile,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.1,
-        )
-        profile.embedding_vector = embedding_vec
-        response = AgentResponse(
-            status="success",
-            confidence=95,
-            reasoning_summary="Successfully extracted candidate profile and generated vector embedding.",
-            data=profile
-        )
-        await save_cached_llm_response(cache_key, response.model_dump())
-        return response
+        async with httpx.AsyncClient() as client:
+            headers = {
+                "X-API-KEY": settings.SERPER_API_KEY,
+                "Content-Type": "application/json"
+            }
+            print(f"\n========== SERPER SEARCH INITIATED ==========")
+            print(f"Query executed: {query}")
+            
+            payload = {"q": query, "num": 10, "page": 1}
+            resp = await client.post("https://google.serper.dev/search", json=payload, headers=headers)
+            resp.raise_for_status()
+            
+            organic_results = resp.json().get("organic", [])
+            
+            if not organic_results:
+                logger.warning("No organic results from Serper.")
+                return []
+                
+            candidates = []
+            print("Scraped Candidate LinkedIn Profiles:")
+            for i, res in enumerate(organic_results):
+                title = res.get("title", "Unknown Candidate")
+                name = title.split(" - ")[0].split(" | ")[0].strip()
+                link = res.get("link", "")
+                snippet = res.get("snippet", "")
+                email = f"{name.lower().replace(' ', '.').replace(',', '')}@linkedin.com"
+                
+                print(f"\n  [{i+1}] Profile Details:")
+                print(f"      Name:    {name}")
+                print(f"      Email:   {email}")
+                print(f"      Link:    {link}")
+                print(f"      Snippet: {snippet}")
+                
+                candidates.append({
+                    "candidate_id": f"cand-{i+1}",
+                    "name": name,
+                    "email": email,
+                    "raw_resume_text": f"{name}. {snippet}",
+                    "resume_url": link
+                })
+            print("\n==============================================\n")
+            return candidates
     except Exception as exc:
-        logger.warning(f"LLM Resume Parsing failed ({exc}); returning heuristic fallback.")
-        return AgentResponse(
-            status="success",
-            confidence=88,
-            reasoning_summary=f"LLM parsing unavailable ({str(exc)}); used heuristic extraction rule set.",
-            data=fallback_profile
-        )
+        logger.error(f"Serper API search failed: {exc}")
+        return fallback
 
 
 # --- Unified Candidate Discovery Agent Interface ---
 
-async def discover_candidates(job_description: str, existing_candidates: Optional[List[Dict[str, Any]]] = None) -> AgentResponse[DiscoveryResult]:
+async def discover_candidates(job_title: str, experience: str, location: str, custom_keywords: str = "", existing_candidates: Optional[List[Dict[str, Any]]] = None) -> AgentResponse[DiscoveryResult]:
     """Candidate Discovery Agent:
     
     Unified agent responsible for:
-    1. Analyzing JD & extracting skills
+    1. Accepting direct JD parameters (bypassing LLM JD extraction)
     2. Generating LinkedIn Boolean query
     3. Searching candidate pools
-    4. Parsing resumes/profiles into normalized vector structures
+    4. Returning raw candidates (bypassing LLM resume parsing)
     """
-    logger.info("Candidate Discovery Agent: Starting discovery pipeline...")
+    logger.info("Candidate Discovery Agent: Starting discovery pipeline (Bypass Parsing Mode)...")
     
-    # 1. Analyze JD
-    jd_res = await analyze_job_description_tool(job_description)
-    criteria = jd_res.data if jd_res.data else _get_fallback_job_criteria(job_description)
+    # 1. Construct JobCriteria directly from inputs
+    criteria = JobCriteria(
+        title=job_title,
+        experience=experience,
+        location=location,
+        required_skills=[],
+        preferred_skills=[]
+    )
 
     # 2. Generate LinkedIn Boolean Query
-    boolean_query = generate_linkedin_query_tool(criteria)
+    boolean_query = generate_linkedin_query_tool(criteria, custom_keywords)
     logger.info(f"Candidate Discovery Agent: Generated Boolean Query -> {boolean_query}")
 
     # 3. Search Candidates
-    raw_candidates = existing_candidates if existing_candidates else search_candidates_tool(boolean_query, criteria)
+    raw_candidates = existing_candidates if existing_candidates else await search_candidates_tool(boolean_query, criteria)
 
-    # 4. Parse & Normalize Resumes
-    parsed_pool = []
-    for cand in raw_candidates:
-        raw_text = cand.get("raw_resume_text") or cand.get("resume_url", "")
-        parse_res = await parse_resume_tool(raw_text)
-        new_cand = dict(cand)
-        if parse_res.data:
-            new_cand["parsed_profile"] = parse_res.data.model_dump()
-            new_cand["skills"] = [s.model_dump() for s in parse_res.data.skills]
-            new_cand["experience_years"] = parse_res.data.total_experience_years
-            new_cand["embedding_vector"] = parse_res.data.embedding_vector
-        parsed_pool.append(new_cand)
-
+    # 4. Return Raw Candidates without LLM Parsing
     result = DiscoveryResult(
         job_criteria=criteria,
         linkedin_boolean_query=boolean_query,
-        total_sourced=len(parsed_pool),
-        parsed_candidates=parsed_pool
+        total_sourced=len(raw_candidates),
+        parsed_candidates=raw_candidates  # Returning raw candidates in place of parsed ones
     )
 
     return AgentResponse(
         status="success",
-        confidence=jd_res.confidence,
-        reasoning_summary=f"Discovery completed: Analyzed JD '{criteria.title}', generated Boolean query, and parsed {len(parsed_pool)} candidates into vector embeddings.",
+        confidence=100,
+        reasoning_summary=f"Discovery completed: Generated Boolean query and sourced {len(raw_candidates)} raw candidates directly.",
         data=result
     )

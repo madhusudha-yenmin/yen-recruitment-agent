@@ -132,7 +132,7 @@ async def generate_interview_questions(
     """Interview Agent Tool: Generates customized interview questions based on candidate resume and JD."""
     fallback_plan = _get_fallback_questions(job, candidate, num_questions)
 
-    if not settings.OPENAI_API_KEY or settings.OPENAI_API_KEY.startswith("sk-..."):
+    if not settings.GROQ_API_KEY:
         return AgentResponse(
             status="success",
             confidence=90,
@@ -151,7 +151,10 @@ async def generate_interview_questions(
         )
 
     try:
-        client = instructor.from_openai(openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY))
+        client = instructor.from_openai(openai.AsyncOpenAI(
+            api_key=settings.GROQ_API_KEY,
+            base_url="https://api.groq.com/openai/v1"
+        ))
         prompt = f"""
 You are an expert Interview Agent.
 Generate {num_questions} customized interview questions (mix of technical, coding, behavioral, architecture, and scenario).
@@ -208,7 +211,7 @@ async def conduct_interview_turn(
         score_for_answer=score
     )
 
-    if not settings.OPENAI_API_KEY or settings.OPENAI_API_KEY.startswith("sk-..."):
+    if not settings.GROQ_API_KEY:
         return AgentResponse(
             status="success",
             confidence=90,
@@ -217,7 +220,10 @@ async def conduct_interview_turn(
         )
 
     try:
-        client = instructor.from_openai(openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY))
+        client = instructor.from_openai(openai.AsyncOpenAI(
+            api_key=settings.GROQ_API_KEY,
+            base_url="https://api.groq.com/openai/v1"
+        ))
         prompt = f"""
 You are an expert AI Interviewer conducting an interview for {job.title} with {candidate.personal_info.name}.
 Current Question ({current_question.type} - {current_question.difficulty}):
@@ -276,7 +282,7 @@ async def evaluate_interview(
     """Interview Agent Tool: Evaluates candidate performance across all competencies."""
     fallback_scores = _get_fallback_evaluation(candidate)
 
-    if not settings.OPENAI_API_KEY or settings.OPENAI_API_KEY.startswith("sk-..."):
+    if not settings.GROQ_API_KEY:
         return AgentResponse(
             status="success",
             confidence=90,
@@ -285,7 +291,10 @@ async def evaluate_interview(
         )
 
     try:
-        client = instructor.from_openai(openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY))
+        client = instructor.from_openai(openai.AsyncOpenAI(
+            api_key=settings.GROQ_API_KEY,
+            base_url="https://api.groq.com/openai/v1"
+        ))
         prompt = f"""
 You are an expert Interview Evaluation Agent.
 Evaluate candidate performance across Technical, Communication, Problem Solving, Leadership, and Behavioral dimensions (out of 100).
@@ -334,7 +343,7 @@ async def audit_evaluation_bias(
     """Interview Agent Tool (Critic Pattern): Audits interview evaluations for scoring consistency and fairness."""
     fallback_audit = _get_fallback_audit(evaluation)
 
-    if not settings.OPENAI_API_KEY or settings.OPENAI_API_KEY.startswith("sk-..."):
+    if not settings.GROQ_API_KEY:
         return AgentResponse(
             status="success",
             confidence=95,
@@ -343,7 +352,10 @@ async def audit_evaluation_bias(
         )
 
     try:
-        client = instructor.from_openai(openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY))
+        client = instructor.from_openai(openai.AsyncOpenAI(
+            api_key=settings.GROQ_API_KEY,
+            base_url="https://api.groq.com/openai/v1"
+        ))
         prompt = f"""
 You are an expert Critic Agent auditing fairness and consistency.
 Review evaluation for potential bias (e.g., penalties for communication style when technical competence is high).
@@ -403,7 +415,7 @@ async def generate_final_report(
     final_scores = critic_audit.adjusted_scores if critic_audit.adjusted_scores else evaluation
     fallback_rep = _get_fallback_report(job, candidate, final_scores)
 
-    if not settings.OPENAI_API_KEY or settings.OPENAI_API_KEY.startswith("sk-..."):
+    if not settings.GROQ_API_KEY:
         return AgentResponse(
             status="success",
             confidence=95,
@@ -412,7 +424,10 @@ async def generate_final_report(
         )
 
     try:
-        client = instructor.from_openai(openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY))
+        client = instructor.from_openai(openai.AsyncOpenAI(
+            api_key=settings.GROQ_API_KEY,
+            base_url="https://api.groq.com/openai/v1"
+        ))
         prompt = f"""
 You are an expert Interview Report Agent.
 Synthesize comprehensive executive report for hiring manager.

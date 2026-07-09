@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 import openai
@@ -24,6 +25,10 @@ class MatchScoreDetails(BaseModel):
 class CandidateMatchResult(BaseModel):
     candidate_id: Optional[str] = None
     candidate_name: str
+    email: Optional[str] = None
+    location: Optional[str] = None
+    experience_years: float = 0.0
+    resume_url: Optional[str] = None
     overall_score: float = Field(description="Weighted overall score from 0 to 100")
     score_details: MatchScoreDetails
     skill_gap: List[str] = Field(default_factory=list, description="List of required skills missing from candidate resume")
@@ -114,7 +119,7 @@ async def match_candidate_tool(job: JobCriteria, candidate: CandidateProfile) ->
     """Internal Tool: Evaluates a single candidate against job criteria using algorithmic scoring and LLM refinement."""
     heuristic_res = compute_heuristic_match(job, candidate)
 
-    if not settings.OPENAI_API_KEY or settings.OPENAI_API_KEY.startswith("sk-..."):
+    if not settings.GROQ_API_KEY:
         return AgentResponse(
             status="success",
             confidence=90,
@@ -134,7 +139,10 @@ async def match_candidate_tool(job: JobCriteria, candidate: CandidateProfile) ->
         )
 
     try:
-        client = instructor.from_openai(openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY))
+        client = instructor.from_openai(openai.AsyncOpenAI(
+            api_key=settings.GROQ_API_KEY,
+            base_url="https://api.groq.com/openai/v1"
+        ))
         prompt = f"""
 You are an expert Candidate Assessment Agent.
 Evaluate candidate against job criteria using weighted formula (Tech 40%, Exp 20%, Loc 10%, Notice 10%, Edu 10%, Industry 10%).
@@ -181,8 +189,7 @@ async def assess_and_rank_candidates(job: JobCriteria, candidate_dicts: List[Dic
     """
     logger.info("Candidate Assessment Agent: Evaluating and ranking candidate pool...")
     
-    evaluated: List[CandidateMatchResult] = []
-    for cand_dict in candidate_dicts:
+    async def process_cand(cand_dict: Dict[str, Any]) -> Optional[CandidateMatchResult]:
         parsed_dict = cand_dict.get("parsed_profile")
         if parsed_dict:
             profile = CandidateProfile.model_validate(parsed_dict)
@@ -194,7 +201,15 @@ async def assess_and_rank_candidates(job: JobCriteria, candidate_dicts: List[Dic
         if res.data:
             match_data = res.data
             match_data.candidate_id = cand_dict.get("candidate_id") or cand_dict.get("email")
-            evaluated.append(match_data)
+            match_data.email = profile.personal_info.email or cand_dict.get("email")
+            match_data.location = profile.personal_info.location
+            match_data.experience_years = cand_dict.get("experience_years", 0.0)
+            match_data.resume_url = cand_dict.get("resume_url")
+            return match_data
+        return None
+
+    evaluated_results = await asyncio.gather(*(process_cand(c) for c in candidate_dicts))
+    evaluated: List[CandidateMatchResult] = [e for e in evaluated_results if e is not None]
 
     # Sort descending by overall score
     evaluated.sort(key=lambda x: x.overall_score, reverse=True)
