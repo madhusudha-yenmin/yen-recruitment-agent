@@ -1,6 +1,6 @@
 export type UserRole = 'hr' | 'candidate';
 
-export type HRTab = 'overview' | 'upload-jd' | 'ranking' | 'interviews' | 'questionnaire' | 'approvals' | 'score-definition';
+export type HRTab = 'overview' | 'upload-jd' | 'ranking' | 'interviews' | 'calendar' | 'questionnaire' | 'approvals' | 'score-definition';
 export type CandidateTab = 'overview' | 'availability' | 'studio';
 
 export interface User {
@@ -19,7 +19,7 @@ export interface User {
     timezone: string;
     isConfirmed?: boolean;
   };
-  interviewStatus?: 'Scheduled' | 'Pending';
+  interviewStatus?: 'Scheduled' | 'Pending' | 'In Progress' | 'Completed' | 'Inprogress';
 }
 
 export type AuthView = 'signin' | 'signup' | 'forgot-password' | 'reset-password';
@@ -35,20 +35,23 @@ export interface AgentLog {
   status: 'success' | 'warning' | 'error';
 }
 
+export type CandidateStatus = 'Applied' | 'Pending HR Review' | 'Offer Sent' | 'Rejected' | 'Hold';
+
 export interface CandidateMatch {
   id: string;
   name: string;
   email: string;
   linkedinUrl?: string;
+  role?: string;
   matchScore: number;
   ranking: number;
   skills: string[];
   experience: string;
   salary: string;
   location: string;
-  status: 'Pending HR Review' | 'Offer Sent' | 'Rejected' | 'Hold';
+  status: CandidateStatus;
   recommendation: 'strong-hire' | 'hire' | 'no-hire';
-  interviewStatus: 'Scheduled' | 'Pending';
+  interviewStatus: 'Scheduled' | 'Pending' | 'In Progress' | 'Completed' | 'Inprogress';
   interviewDate?: string;
   interviewMode?: 'AI Chat Studio' | 'AI Voice Studio';
   evaluationDetails?: {
