@@ -118,10 +118,16 @@ def _get_fallback_job_criteria(job_description: str) -> JobCriteria:
     jd_lower = job_description.lower()
     
     title = "Software Engineer"
-    if "react" in jd_lower:
+    required_skills = ["React", "JavaScript", "Python"]
+    if "java" in jd_lower and "javascript" not in jd_lower:
+        title = "Java Developer"
+        required_skills = ["Java", "Spring Boot", "SQL", "Microservices"]
+    elif "react" in jd_lower:
         title = "React Developer"
+        required_skills = ["React", "JavaScript", "TypeScript"]
     elif "ai" in jd_lower or "backend" in jd_lower:
         title = "Senior AI Backend Engineer"
+        required_skills = ["Python", "FastAPI", "LangGraph", "PostgreSQL"]
         
     location = "Remote"
     loc_match = re.search(r'located in ([a-zA-Z\s]+)', jd_lower)
@@ -141,7 +147,7 @@ def _get_fallback_job_criteria(job_description: str) -> JobCriteria:
         
     return JobCriteria(
         title=title,
-        required_skills=["React", "JavaScript", "Python"],
+        required_skills=required_skills,
         preferred_skills=[],
         experience=exp,
         salary="Negotiable",
@@ -156,8 +162,8 @@ def _get_fallback_candidate_profile(raw_text: str, embedding_vec: List[float]) -
     email = f"{name.lower().replace(' ', '.')}@example.com"
     exp_years = 6.0 if "6 years" in raw_text or "Alice" in raw_text else (4.0 if "4 years" in raw_text or "Charlie" in raw_text else 2.0)
     skills_list = []
-    for sk in ["Python", "FastAPI", "PostgreSQL", "Docker", "LangGraph", "Redis", "React", "Next.js", "Django"]:
-        if sk.lower() in raw_text.lower():
+    for sk in ["Java", "Spring Boot", "Python", "FastAPI", "PostgreSQL", "Docker", "LangGraph", "Redis", "React", "Next.js", "Django", "TypeScript", "JavaScript"]:
+        if re.search(r'\b' + re.escape(sk.lower()) + r'\b', raw_text.lower()):
             skills_list.append(SkillItem(skill_name=sk, years=exp_years, level="advanced" if exp_years >= 4 else "intermediate"))
     
     if not skills_list:
