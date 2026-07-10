@@ -82,6 +82,33 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
   const [newCardScore, setNewCardScore] = useState("88");
   const [newCardSkills, setNewCardSkills] = useState("Variant 1, Python, LangGraph");
 
+  // Score Definition Rubric Weights State (Editable by HR)
+  const [rubricWeights, setRubricWeights] = useState({
+    technical: 45,
+    experience: 25,
+    education: 10,
+    compensation: 10,
+    locationNotice: 10
+  });
+  const [isEditingWeights, setIsEditingWeights] = useState(false);
+  const [tempWeights, setTempWeights] = useState({
+    technical: 45,
+    experience: 25,
+    education: 10,
+    compensation: 10,
+    locationNotice: 10
+  });
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState("");
+
+  // Kanban Drag & Drop and Manual Card Entry State (`manual and agent`)
+  const [draggedCandId, setDraggedCandId] = useState<string | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<CandidateStatus | null>(null);
+  const [showAddCardModal, setShowAddCardModal] = useState<CandidateStatus | null>(null);
+  const [newCardName, setNewCardName] = useState("");
+  const [newCardEmail, setNewCardEmail] = useState("");
+  const [newCardScore, setNewCardScore] = useState("88");
+  const [newCardSkills, setNewCardSkills] = useState("Variant 1, Python, LangGraph");
+
   // Candidate Pool State
   const [candidates, setCandidates] = useState<CandidateMatch[]>([
     {
