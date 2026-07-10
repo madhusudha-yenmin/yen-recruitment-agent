@@ -306,6 +306,7 @@ def _skills_match_score(candidate_skills: List[str], job_title: str, exp_req: st
 
     # Map of synonym sets for related tech stacks
     synonyms = {
+        "java": {"java", "core java", "j2ee", "spring", "spring boot", "hibernate", "jvm"},
         "react": {"reactjs", "react.js", "react-js", "react native", "react-native"},
         "node": {"nodejs", "node.js", "expressjs", "express.js"},
         "js": {"javascript", "js", "es6"},
@@ -330,12 +331,16 @@ def _skills_match_score(candidate_skills: List[str], job_title: str, exp_req: st
                 kw_syns.update(syn_set)
                 kw_syns.add(k)
                 
-        # Look for a match or substring match in candidate's skills list
+        # Look for exact word boundary match in candidate's skills list to avoid java matching javascript
         found = False
         for skill in candidate_skills:
-            skill_lower = skill.lower()
+            skill_lower = skill.lower().strip()
             for syn in kw_syns:
-                if syn == skill_lower or syn in skill_lower or skill_lower in syn:
+                syn_lower = syn.lower().strip()
+                # Check exact equality or word boundary match (e.g. \bjava\b inside 'core java, sql', but not 'javascript')
+                if (syn_lower == skill_lower or 
+                    re.search(r'\b' + re.escape(syn_lower) + r'\b', skill_lower) or 
+                    re.search(r'\b' + re.escape(skill_lower) + r'\b', syn_lower)):
                     matched.add(kw)
                     found = True
                     break
