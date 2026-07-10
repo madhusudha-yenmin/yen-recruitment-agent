@@ -9,6 +9,33 @@ interface HRDashboardProps {
   onSignOut: () => void;
 }
 
+const formatSchedule = (scheduleStr?: string) => {
+  if (!scheduleStr || scheduleStr.toLowerCase().includes('awaiting')) {
+    return { date: 'Awaiting slot', time: '-' };
+  }
+  const parts = scheduleStr.split('@').map(s => s.trim());
+  let datePart = parts[0] || '';
+  let timePart = parts[1] || '';
+
+  if (timePart) {
+    timePart = timePart.replace(/\b(IST|EST|CET|PST|UTC([+-]\d+)?|GMT([+-]\d+)?)\b/gi, '').trim();
+  }
+
+  try {
+    const d = new Date(datePart);
+    if (!isNaN(d.getTime())) {
+      const day = d.getDate();
+      const month = d.getMonth() + 1;
+      const year = d.getFullYear().toString().slice(-2);
+      datePart = `${day}/${month}/${year}`;
+    }
+  } catch (e) {
+    // keep as is if unparseable
+  }
+
+  return { date: datePart, time: timePart };
+};
+
 export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => {
   const [activeTab, setActiveTab] = useState<HRTab>('overview');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -16,6 +43,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
   const [calendarFilter, setCalendarFilter] = useState<'all' | 'Scheduled' | 'In Progress' | 'Completed'>('all');
   const [selectedCalendarDay, setSelectedCalendarDay] = useState<number | null>(null);
   const [interviewFilter, setInterviewFilter] = useState<'all' | 'Pending' | 'Scheduled' | 'In Progress' | 'Completed'>('all');
+  const [questionFilter, setQuestionFilter] = useState<string>('all');
 
   // JD Upload & Orchestrator State
   const [jobTitle, setJobTitle] = useState('React Developer');
@@ -69,8 +97,8 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
       status: 'Pending HR Review',
       recommendation: 'strong-hire',
       interviewStatus: 'Scheduled',
-      interviewDate: 'July 10, 2026 @ 10:00 AM EST',
-      interviewMode: 'AI Chat Studio',
+      interviewDate: 'July 10, 2026 @ 10:00 AM IST',
+      interviewMode: 'AI',
       evaluationDetails: {
         technical: 92,
         communication: 90,
@@ -92,8 +120,8 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
       status: 'Pending HR Review',
       recommendation: 'hire',
       interviewStatus: 'Scheduled',
-      interviewDate: 'July 11, 2026 @ 2:00 PM CET',
-      interviewMode: 'AI Voice Studio',
+      interviewDate: 'July 11, 2026 @ 2:00 PM IST',
+      interviewMode: 'AI',
       evaluationDetails: {
         technical: 85,
         communication: 88,
@@ -115,7 +143,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
       status: 'Rejected',
       recommendation: 'no-hire',
       interviewStatus: 'Pending',
-      interviewMode: 'AI Chat Studio'
+      interviewMode: 'Manual'
     },
     {
       id: 'cand-004',
@@ -130,8 +158,8 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
       status: 'Offer Sent',
       recommendation: 'strong-hire',
       interviewStatus: 'Scheduled',
-      interviewDate: 'July 08, 2026 @ 11:30 AM EST',
-      interviewMode: 'AI Voice Studio',
+      interviewDate: 'July 08, 2026 @ 11:30 AM IST',
+      interviewMode: 'AI',
       evaluationDetails: {
         technical: 94,
         communication: 89,
@@ -176,8 +204,8 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
       status: 'Applied',
       recommendation: 'hire',
       interviewStatus: 'In Progress',
-      interviewDate: 'July 09, 2026 @ 3:30 PM EST',
-      interviewMode: 'AI Voice Studio',
+      interviewDate: 'July 09, 2026 @ 3:30 PM IST',
+      interviewMode: 'Manual',
       evaluationDetails: {
         technical: 84,
         communication: 80,
@@ -200,8 +228,8 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
       status: 'Hold',
       recommendation: 'strong-hire',
       interviewStatus: 'Completed',
-      interviewDate: 'July 08, 2026 @ 1:00 PM EST',
-      interviewMode: 'AI Chat Studio',
+      interviewDate: 'July 08, 2026 @ 1:00 PM IST',
+      interviewMode: 'AI',
       evaluationDetails: {
         technical: 96,
         communication: 94,
@@ -1192,28 +1220,91 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                       {/* Card Details Box */}
                       <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800/80 space-y-2.5 text-xs">
                         <div className="flex items-center justify-between text-slate-300">
-                          <span className="text-slate-400 font-medium">💼 Role:</span>
-                          <span className="font-bold text-slate-200 truncate max-w-[170px]">{cand.role || 'AI Engineer'} ({cand.experience || '5+ yrs'})</span>
+                          <span className="text-slate-400 font-medium shrink-0">💼 Role:</span>
+                          <span className="font-bold text-slate-200 truncate max-w-[170px] text-right">{cand.role || 'AI Engineer'} ({cand.experience || '5+ yrs'})</span>
                         </div>
 
-                        <div className="flex items-center justify-between text-slate-300 border-t border-slate-900 pt-2">
-                          <span className="text-slate-400 font-medium">⏰ Schedule:</span>
-                          <span className="font-mono font-bold text-purple-300 truncate max-w-[170px]">
-                            {cand.interviewDate || 'Awaiting portal slot'}
+                        {(() => {
+                          const sched = formatSchedule(cand.interviewDate);
+                          return (
+                            <>
+                              <div className="flex items-center justify-between text-slate-300 border-t border-slate-900 pt-2.5">
+                                <span className="text-slate-400 font-medium flex items-center gap-1.5 shrink-0">
+                                  <span>📅</span>
+                                  <span>Date:</span>
+                                </span>
+                                <span className="font-mono font-bold text-purple-300 bg-purple-500/10 px-2.5 py-0.5 rounded-lg border border-purple-500/20 text-xs">
+                                  {sched.date}
+                                </span>
+                              </div>
+                              {sched.time && sched.time !== '-' && (
+                                <div className="flex items-center justify-between text-slate-300 border-t border-slate-900/60 pt-2.5">
+                                  <span className="text-slate-400 font-medium flex items-center gap-1.5 shrink-0">
+                                    <span>⏰</span>
+                                    <span>Time:</span>
+                                  </span>
+                                  <span className="font-mono font-bold text-cyan-300 bg-cyan-500/10 px-2.5 py-0.5 rounded-lg border border-cyan-500/20 text-xs">
+                                    {sched.time}
+                                  </span>
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
+
+                        <div className="flex items-center justify-between text-slate-300 border-t border-slate-900 pt-2.5">
+                          <span className="text-slate-400 font-medium flex items-center gap-1.5">
+                            <span>🎙️</span>
+                            <span>Interview Mode:</span>
+                          </span>
+                          <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold font-mono border ${
+                            cand.interviewMode?.toLowerCase().includes('manual')
+                              ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                              : 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30'
+                          }`}>
+                            {cand.interviewMode?.toLowerCase().includes('manual') ? 'Manual' : 'AI'}
                           </span>
                         </div>
 
-                        <div className="flex items-center justify-between text-slate-300 border-t border-slate-900 pt-2">
-                          <span className="text-slate-400 font-medium">🎙️ Studio Mode:</span>
-                          <span className="font-semibold text-indigo-300">{cand.interviewMode || 'AI Chat Studio'}</span>
-                        </div>
-
                         {cand.matchScore && (
-                          <div className="flex items-center justify-between text-slate-300 border-t border-slate-900 pt-2">
-                            <span className="text-slate-400 font-medium">⭐ Resume Rank:</span>
-                            <span className="font-mono font-extrabold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">
-                              {cand.matchScore}% Match
-                            </span>
+                          <div className={`border-t border-slate-900 pt-2.5 ${
+                            cand.interviewStatus === 'Completed'
+                              ? 'grid grid-cols-2 gap-2'
+                              : 'flex items-center justify-between text-slate-300'
+                          }`}>
+                            {cand.interviewStatus === 'Completed' ? (
+                              <>
+                                <div className="flex flex-col items-start gap-1 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+                                  <span className="text-slate-400 font-medium text-[11px] flex items-center gap-1">
+                                    <span>⭐</span>
+                                    <span>Resume Rank:</span>
+                                  </span>
+                                  <span className="font-mono font-extrabold text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20 text-xs w-full text-center">
+                                    {cand.matchScore}% Match
+                                  </span>
+                                </div>
+
+                                <div className="flex flex-col items-start gap-1 bg-slate-900/60 p-2.5 rounded-xl border border-purple-500/30 shadow-sm shadow-purple-500/10">
+                                  <span className="text-slate-400 font-medium text-[11px] flex items-center gap-1">
+                                    <span>🏆</span>
+                                    <span>Interview Rank:</span>
+                                  </span>
+                                  <span className="font-mono font-extrabold text-purple-300 bg-purple-500/15 px-2 py-1 rounded-lg border border-purple-500/30 text-xs w-full text-center">
+                                    {cand.evaluationDetails?.overall ? `${cand.evaluationDetails.overall}% Score` : `#${cand.ranking || 1} Rank`}
+                                  </span>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <span className="text-slate-400 font-medium flex items-center gap-1.5">
+                                  <span>⭐</span>
+                                  <span>Resume Rank:</span>
+                                </span>
+                                <span className="font-mono font-extrabold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-lg border border-emerald-500/20">
+                                  {cand.matchScore}% Match
+                                </span>
+                              </>
+                            )}
                           </div>
                         )}
                       </div>
@@ -1328,8 +1419,10 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                     <div className="min-h-[85px] rounded-2xl bg-slate-950/20 border border-slate-900/40" />
 
                     {Array.from({ length: 31 }, (_, i) => i + 1).map((dayNum) => {
+                      const isPast = dayNum < 10;
+                      const isToday = dayNum === 10;
                       const dayStr = `July ${dayNum < 10 ? '0' + dayNum : dayNum}`;
-                      const dayCandidates = candidates.filter((c) => {
+                      const dayCandidates = isPast ? [] : candidates.filter((c) => {
                         if (!c.interviewDate || !c.interviewDate.includes(dayStr)) return false;
                         if (calendarFilter === 'all') return true;
                         if (calendarFilter === 'In Progress') return c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress';
@@ -1341,30 +1434,39 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                       return (
                         <div
                           key={dayNum}
-                          onClick={() => setSelectedCalendarDay(isSelected ? null : dayNum)}
-                          className={`min-h-[85px] p-2.5 rounded-2xl transition-all cursor-pointer flex flex-col justify-between border ${
-                            isSelected
-                              ? 'bg-purple-950/50 border-purple-500 ring-2 ring-purple-500/40 shadow-lg'
+                          onClick={() => !isPast && setSelectedCalendarDay(isSelected ? null : dayNum)}
+                          className={`min-h-[85px] p-2.5 rounded-2xl transition-all flex flex-col justify-between border ${
+                            isPast
+                              ? 'bg-slate-950/20 border-slate-900/40 opacity-40 pointer-events-none'
+                              : isSelected
+                              ? 'bg-purple-950/50 border-purple-500 ring-2 ring-purple-500/40 shadow-lg cursor-pointer'
+                              : isToday
+                              ? 'bg-slate-900 hover:bg-slate-850 border-emerald-500/60 ring-1 ring-emerald-500/30 shadow cursor-pointer'
                               : hasSessions
-                              ? 'bg-slate-900 hover:bg-slate-850 border-purple-500/40 shadow'
-                              : 'bg-slate-950/40 hover:bg-slate-900/60 border-slate-800/60'
+                              ? 'bg-slate-900 hover:bg-slate-850 border-purple-500/40 shadow cursor-pointer'
+                              : 'bg-slate-950/40 hover:bg-slate-900/60 border-slate-800/60 cursor-pointer'
                           }`}
                         >
                           <div className="flex items-center justify-between">
-                            <span className={`text-xs font-bold ${
-                              isSelected ? 'text-purple-300' : hasSessions ? 'text-white' : 'text-slate-500'
+                            <span className={`text-xs font-bold flex items-center ${
+                              isSelected ? 'text-purple-300' : isToday ? 'text-emerald-400' : hasSessions ? 'text-white' : 'text-slate-500'
                             }`}>
-                              {dayNum}
+                              <span>{dayNum}</span>
+                              {isToday && <span className="text-[9px] font-black text-emerald-300 ml-1">(Today)</span>}
                             </span>
                             {hasSessions && (
-                              <span className="w-1.5 h-1.5 rounded-full bg-purple-400 shrink-0" />
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isToday ? 'bg-emerald-400 animate-pulse' : 'bg-purple-400'}`} />
                             )}
                           </div>
 
                           {/* Clean Minimal Badge instead of noisy scrolling pills */}
                           {hasSessions ? (
                             <div className="mt-1">
-                              <span className="block px-2 py-1 rounded-lg bg-purple-500/20 border border-purple-500/30 text-[10px] font-bold text-purple-200 text-center font-mono truncate">
+                              <span className={`block px-2 py-1 rounded-lg border text-[10px] font-bold text-center font-mono truncate ${
+                                isToday
+                                  ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-200'
+                                  : 'bg-purple-500/20 border-purple-500/30 text-purple-200'
+                              }`}>
                                 {dayCandidates.length} {dayCandidates.length === 1 ? 'Session' : 'Sessions'}
                               </span>
                             </div>
@@ -1382,10 +1484,10 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                   <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                     <div>
                       <h3 className="text-sm font-extrabold text-white uppercase tracking-wider">
-                        {selectedCalendarDay !== null ? `July ${selectedCalendarDay}, 2026` : 'Upcoming Sessions'}
+                        {selectedCalendarDay !== null ? `July ${selectedCalendarDay}, 2026` : 'Today & Upcoming (July 10+)'}
                       </h3>
                       <p className="text-[11px] text-slate-400 mt-0.5">
-                        {selectedCalendarDay !== null ? 'Sessions on selected date' : `Showing all (${calendarFilter})`}
+                        {selectedCalendarDay !== null ? 'Sessions on selected date' : `Showing active & upcoming (${calendarFilter})`}
                       </p>
                     </div>
                     {selectedCalendarDay !== null && (
@@ -1403,6 +1505,11 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                     {(() => {
                       const filteredList = candidates.filter((c) => {
                         if (!c.interviewDate) return false;
+                        const match = c.interviewDate.match(/July (\d+)/);
+                        if (match) {
+                          const candDay = parseInt(match[1], 10);
+                          if (candDay < 10) return false;
+                        }
                         if (calendarFilter !== 'all' && c.interviewStatus !== calendarFilter && !(calendarFilter === 'In Progress' && (c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress'))) return false;
                         if (selectedCalendarDay !== null) {
                           const dayStr = `July ${selectedCalendarDay < 10 ? '0' + selectedCalendarDay : selectedCalendarDay}`;
@@ -1438,19 +1545,47 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                             </span>
                           </div>
 
-                          <div className="pt-2 border-t border-slate-900 text-[11px] text-slate-300 space-y-1 font-mono">
+                          <div className="pt-2 border-t border-slate-900 text-[11px] text-slate-300 space-y-1.5">
+                            {(() => {
+                              const sched = formatSchedule(c.interviewDate);
+                              return (
+                                <>
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-slate-500 font-medium">📅 Date:</span>
+                                    <span className="font-mono font-bold text-purple-300 text-right">{sched.date}</span>
+                                  </div>
+                                  {sched.time && sched.time !== '-' && (
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-slate-500 font-medium">⏰ Time:</span>
+                                      <span className="font-mono font-bold text-cyan-300 text-right">{sched.time}</span>
+                                    </div>
+                                  )}
+                                </>
+                              );
+                            })()}
                             <div className="flex items-center justify-between">
-                              <span className="text-slate-500">📅 Date:</span>
-                              <span className="text-purple-300">{c.interviewDate}</span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-slate-500">🎙️ Mode:</span>
-                              <span className="text-indigo-300">{c.interviewMode || 'AI Chat Studio'}</span>
+                              <span className="text-slate-500 font-medium">🎙️ Interview Mode:</span>
+                              <span className="font-mono font-bold text-indigo-300">{c.interviewMode?.toLowerCase().includes('manual') ? 'Manual' : 'AI'}</span>
                             </div>
                             {c.matchScore && (
-                              <div className="flex items-center justify-between">
-                                <span className="text-slate-500">⭐ Rank:</span>
-                                <span className="text-emerald-400 font-bold">{c.matchScore}%</span>
+                              <div className={`pt-1 border-t border-slate-900/60 ${c.interviewStatus === 'Completed' ? 'grid grid-cols-2 gap-1.5' : 'flex items-center justify-between'}`}>
+                                {c.interviewStatus === 'Completed' ? (
+                                  <>
+                                    <div className="bg-slate-900/80 p-1.5 rounded-lg border border-slate-800/80 text-center">
+                                      <div className="text-[9px] text-slate-400">⭐ Resume Rank</div>
+                                      <div className="font-mono font-bold text-emerald-400 text-xs mt-0.5">{c.matchScore}%</div>
+                                    </div>
+                                    <div className="bg-purple-950/40 p-1.5 rounded-lg border border-purple-500/30 text-center">
+                                      <div className="text-[9px] text-slate-400">🏆 Interview Rank</div>
+                                      <div className="font-mono font-bold text-purple-300 text-xs mt-0.5">{c.evaluationDetails?.overall ? `${c.evaluationDetails.overall}%` : `#${c.ranking || 1}`}</div>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="text-slate-500 font-medium">⭐ Resume Rank:</span>
+                                    <span className="text-emerald-400 font-mono font-bold">{c.matchScore}% Match</span>
+                                  </>
+                                )}
                               </div>
                             )}
                           </div>
@@ -1473,87 +1608,149 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
           )}
 
           {/* VIEW 5: QUESTIONNAIRE BASED ON JD */}
+          {/* VIEW 5: QUESTIONNAIRE BASED ON JD */}
+          {/* VIEW 5: QUESTIONNAIRE BASED ON JD */}
           {activeTab === 'questionnaire' && (
-            <div className="space-y-6">
-              <div className="p-8 rounded-3xl bg-slate-900/80 border border-slate-800/80 shadow-2xl space-y-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-6">
+            <div className="space-y-6 animate-in fade-in duration-200">
+              {/* Clean Top Header Container */}
+              <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800/80 shadow-xl space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
-                    <h2 className="text-2xl font-extrabold text-white flex items-center space-x-2">
-                      <span className="w-3 h-3 rounded-full bg-pink-500 animate-pulse" />
-                      <span>JD Questionnaire Studio</span>
+                    <h2 className="text-xl font-extrabold text-white flex items-center space-x-2">
+                      <span>JD Questionnaire & Interview Rubric Studio</span>
+                      <span className="w-2 h-2 rounded-full bg-pink-500 animate-pulse" />
                     </h2>
                     <p className="text-xs text-slate-400 mt-1">
-                      Tailored interview questions automatically synthesized by the **Interview Agent** from your uploaded Job Description (`Senior AI Backend Engineer`).
+                      Tailored interview questions synthesized by the autonomous Interview Agent from <span className="text-slate-300 font-medium">{jobTitle}</span>.
                     </p>
                   </div>
-                  <span className="px-3 py-1 rounded-full bg-pink-500/20 text-pink-300 text-xs font-bold border border-pink-500/30">
-                    {questions.length} Active Questions
+                  <span className="px-3.5 py-1.5 rounded-full bg-slate-950 border border-slate-800 text-xs font-bold text-slate-300 shrink-0">
+                    <span className="text-pink-400 font-mono mr-1">{questions.length}</span> Total Questions
                   </span>
                 </div>
 
-                {/* Add New Question Form */}
-                <form onSubmit={handleAddQuestion} className="p-6 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-4">
-                  <h3 className="text-sm font-bold text-white flex items-center space-x-2">
-                    <span>+ Add Custom Interview Question to Rubric</span>
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-slate-300">Category</label>
-                      <select
-                        value={newQuestionCat}
-                        onChange={(e) => setNewQuestionCat(e.target.value)}
-                        className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                {/* Simple Category Filter Tabs */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pt-2 border-t border-slate-800/80">
+                  {(['all', 'Technical / Core Stack', 'System Architecture', 'Behavioral & Leadership', 'Scenario & Problem Solving'] as const).map((cat) => {
+                    const count = cat === 'all'
+                      ? questions.length
+                      : questions.filter(q => q.category === cat).length;
+
+                    return (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setQuestionFilter(cat)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center space-x-1.5 shrink-0 ${
+                          questionFilter === cat
+                            ? 'bg-pink-500/20 text-pink-300 border border-pink-500/40 font-bold'
+                            : 'bg-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/80 border border-transparent'
+                        }`}
                       >
-                        <option>Technical / Core Stack</option>
-                        <option>System Architecture</option>
-                        <option>Behavioral & Leadership</option>
-                        <option>Scenario & Problem Solving</option>
-                      </select>
-                    </div>
-                    <div className="sm:col-span-2 space-y-1.5">
-                      <label className="text-xs font-medium text-slate-300">Question Text *</label>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          required
-                          value={newQuestionText}
-                          onChange={(e) => setNewQuestionText(e.target.value)}
-                          placeholder="e.g., Explain how you optimize PostgreSQL indexes for high-frequency vector searches..."
-                          className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                        />
+                        <span>{cat === 'all' ? 'All Categories' : cat}</span>
+                        <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${
+                          questionFilter === cat ? 'bg-pink-500/30 text-pink-200 font-bold' : 'bg-slate-800 text-slate-400'
+                        }`}>
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Simple & Neat Quick-Add Question Bar */}
+              <form onSubmit={handleAddQuestion} className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800/80 shadow-md">
+                <div className="flex flex-col md:flex-row items-center gap-3">
+                  <div className="flex items-center space-x-2 shrink-0 self-start md:self-center">
+                    <span className="text-pink-400 font-black text-sm pl-1">+</span>
+                    <span className="text-xs font-bold text-slate-300 whitespace-nowrap">Add Question:</span>
+                  </div>
+
+                  <select
+                    value={newQuestionCat}
+                    onChange={(e) => setNewQuestionCat(e.target.value)}
+                    className="w-full md:w-52 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-xs font-medium focus:outline-none focus:border-pink-500 cursor-pointer shrink-0"
+                  >
+                    <option>Technical / Core Stack</option>
+                    <option>System Architecture</option>
+                    <option>Behavioral & Leadership</option>
+                    <option>Scenario & Problem Solving</option>
+                  </select>
+
+                  <input
+                    type="text"
+                    required
+                    value={newQuestionText}
+                    onChange={(e) => setNewQuestionText(e.target.value)}
+                    placeholder="Type custom question or evaluation criteria here..."
+                    className="w-full px-4 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-pink-500 placeholder-slate-500"
+                  />
+
+                  <button
+                    type="submit"
+                    className="w-full md:w-auto px-5 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-bold text-xs shadow-md shrink-0 cursor-pointer transition-all active:scale-95"
+                  >
+                    Add
+                  </button>
+                </div>
+              </form>
+
+              {/* Clean, Neat Single-Column Question Cards List */}
+              <div className="space-y-3">
+                {questions
+                  .filter(q => questionFilter === 'all' ? true : q.category === questionFilter)
+                  .map((q) => (
+                    <div
+                      key={q.id}
+                      className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/60 hover:border-slate-700/80 transition-all shadow-sm flex flex-col sm:flex-row sm:items-start justify-between gap-4 group"
+                    >
+                      <div className="space-y-2.5 flex-1">
+                        <div className="flex items-center space-x-2.5">
+                          <span className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold border ${
+                            q.category === 'Technical / Core Stack' ? 'bg-purple-500/15 text-purple-300 border-purple-500/25' :
+                            q.category === 'System Architecture' ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/25' :
+                            q.category === 'Behavioral & Leadership' ? 'bg-pink-500/15 text-pink-300 border-pink-500/25' :
+                            'bg-amber-500/15 text-amber-300 border-amber-500/25'
+                          }`}>
+                            {q.category}
+                          </span>
+                          <span className="text-xs font-mono font-semibold text-slate-500">Q#{q.id}</span>
+                        </div>
+
+                        <p className="text-sm font-semibold text-slate-100 leading-relaxed">
+                          &ldquo;{q.question}&rdquo;
+                        </p>
+
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                          <span className="text-[11px] text-slate-500 font-medium mr-1">Target Skills:</span>
+                          {q.targetSkills.map((s, i) => (
+                            <span key={i} className="px-2 py-0.5 rounded bg-slate-950/80 text-[11px] font-medium text-slate-300 border border-slate-800/80">
+                              ✓ {s}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="flex sm:flex-col items-end justify-between sm:justify-start shrink-0">
                         <button
-                          type="submit"
-                          className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md shrink-0 cursor-pointer"
+                          type="button"
+                          onClick={() => setQuestions(prev => prev.filter(item => item.id !== q.id))}
+                          className="px-3 py-1.5 rounded-lg bg-transparent hover:bg-red-500/15 text-slate-500 hover:text-red-400 text-xs font-medium transition-all cursor-pointer flex items-center space-x-1"
+                          title="Delete question"
                         >
-                          Add Question
+                          <span>Delete</span>
+                          <span>🗑</span>
                         </button>
                       </div>
                     </div>
-                  </div>
-                </form>
-
-                {/* Question Cards */}
-                <div className="space-y-4">
-                  {questions.map((q) => (
-                    <div key={q.id} className="p-6 rounded-3xl bg-slate-950/60 border border-slate-800/80 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="px-3 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-xs font-bold text-indigo-300">
-                          {q.category}
-                        </span>
-                        <span className="text-xs font-mono text-slate-500">Q#{q.id}</span>
-                      </div>
-                      <p className="text-base font-bold text-white leading-relaxed">&ldquo;{q.question}&rdquo;</p>
-                      <div className="flex flex-wrap gap-2 pt-1">
-                        <span className="text-xs text-slate-400 font-semibold self-center mr-1">Target Skills:</span>
-                        {q.targetSkills.map((s, i) => (
-                          <span key={i} className="px-2 py-0.5 rounded bg-slate-900 text-[11px] text-purple-300 border border-slate-800">
-                            ✓ {s}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
                   ))}
-                </div>
+
+                {questions.filter(q => questionFilter === 'all' ? true : q.category === questionFilter).length === 0 && (
+                  <div className="py-12 text-center text-slate-400 text-xs font-medium bg-slate-900/40 rounded-2xl border border-dashed border-slate-800">
+                    No questions found in <span className="font-bold text-pink-400">"{questionFilter}"</span> category.
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1581,15 +1778,6 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                       Active Candidate Pool: <strong className="text-indigo-400 font-mono text-sm ml-1">{candidates.length}</strong> Profiles
                     </span>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setShowAddCardModal('Applied')}
-                    className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-extrabold shadow-lg shadow-purple-600/25 border border-purple-500/30 transition-all cursor-pointer flex items-center justify-center space-x-2 active:scale-95 shrink-0"
-                  >
-                    <span className="text-base leading-none font-black">+</span>
-                    <span className="whitespace-nowrap">Add New Candidate Card</span>
-                  </button>
                 </div>
 
                 {/* 5-Column Kanban Grid: Candidates + Scheduled + Review + Approved + Rejected */}
@@ -1645,17 +1833,6 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                               </div>
                             </div>
                           </div>
-                          <div className="flex items-center space-x-1 text-slate-400">
-                            <button
-                              type="button"
-                              onClick={() => setShowAddCardModal(col.id)}
-                              title="Add card to this column"
-                              className="w-6 h-6 rounded-lg hover:bg-slate-800 text-slate-300 flex items-center justify-center font-bold text-xs cursor-pointer transition-colors"
-                            >
-                              +
-                            </button>
-                            <span className="cursor-pointer tracking-widest text-xs px-1 hover:text-white transition-colors">...</span>
-                          </div>
                         </div>
 
                         {/* Column Cards Container */}
@@ -1663,7 +1840,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                           {colCards.length === 0 ? (
                             <div className="h-44 border-2 border-dashed border-slate-800/60 rounded-2xl flex flex-col items-center justify-center text-center p-4">
                               <p className="text-xs font-semibold text-slate-500">No cards in {col.title}</p>
-                              <p className="text-[10px] text-slate-600 mt-1">Drag & drop cards here or click + Add Card</p>
+                              <p className="text-[10px] text-slate-600 mt-1">Drag & drop cards here to update pipeline status</p>
                             </div>
                           ) : (
                             colCards.map((cand) => (
@@ -1726,17 +1903,6 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                               </div>
                             ))
                           )}
-                        </div>
-
-                        {/* + Add Card button at bottom of column matching blue/indigo + Add Card from image */}
-                        <div className="p-3 border-t border-slate-800/80 mt-auto bg-slate-900/40">
-                          <button
-                            type="button"
-                            onClick={() => setShowAddCardModal(col.id)}
-                            className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center space-x-1.5 active:scale-95"
-                          >
-                            <span>+ Add Card</span>
-                          </button>
                         </div>
                       </div>
                     );

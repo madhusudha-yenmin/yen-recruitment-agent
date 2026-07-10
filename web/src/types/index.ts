@@ -53,7 +53,7 @@ export interface CandidateMatch {
   recommendation: 'strong-hire' | 'hire' | 'no-hire';
   interviewStatus: 'Scheduled' | 'Pending' | 'In Progress' | 'Completed' | 'Inprogress';
   interviewDate?: string;
-  interviewMode?: 'AI Chat Studio' | 'AI Voice Studio';
+  interviewMode?: 'AI Chat Studio' | 'AI Voice Studio' | 'AI' | 'Manual';
   evaluationDetails?: {
     technical: number;
     communication: number;
