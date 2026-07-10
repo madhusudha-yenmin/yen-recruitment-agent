@@ -15,15 +15,15 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
 
   // Availability Screen State
   const [selectedDays, setSelectedDays] = useState<string[]>(user.availability?.days || ['Monday', 'Wednesday', 'Friday']);
-  const [selectedSlots, setSelectedSlots] = useState<string[]>(user.availability?.timeSlots || ['Morning (09:00 - 12:00 EST)', 'Afternoon (13:00 - 17:00 EST)']);
-  const [timezone, setTimezone] = useState<string>(user.availability?.timezone || 'EST (UTC-5)');
+  const [selectedSlots, setSelectedSlots] = useState<string[]>(user.availability?.timeSlots || ['Morning (09:00 - 12:00 IST)', 'Afternoon (13:00 - 17:00 IST)']);
+  const [timezone, setTimezone] = useState<string>(user.availability?.timezone || 'IST (UTC+5:30) - Indian Standard Time');
   const [isAvailabilitySaved, setIsAvailabilitySaved] = useState<boolean>(user.availability?.isConfirmed || true);
 
   // AI Interview Studio State
   const [messages, setMessages] = useState<{ sender: 'ai' | 'candidate'; text: string; timestamp: string }[]>([
     {
       sender: 'ai',
-      text: "Hello Alice! I am the YEN AI Interview Agent. Congratulations on your top ranking (96% Match) for the Senior AI Backend Engineer role! Today, we will explore your technical experience with Python, FastAPI, and LangGraph. Are you ready to begin your assessment?",
+      text: "Hello Alice! I am the YEN AI Interview Agent. Congratulations on progressing to the technical interview stage for the Senior AI Backend Engineer role! Today, we will explore your technical experience with Python, FastAPI, and LangGraph. Are you ready to begin your assessment?",
       timestamp: "10:00 AM"
     },
     {
@@ -39,13 +39,13 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
   ]);
   const [currentInput, setCurrentInput] = useState("");
   const [isSynthesizing, setIsSynthesizing] = useState(false);
-  const [interviewScore, setInterviewScore] = useState<number | null>(9.2);
+  const [interviewScore, setInterviewScore] = useState<number | null>(null);
 
   const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
   const timeWindows = [
-    'Morning (09:00 - 12:00 EST)',
-    'Afternoon (13:00 - 17:00 EST)',
-    'Evening (18:00 - 21:00 EST)'
+    'Morning (09:00 - 12:00 IST)',
+    'Afternoon (13:00 - 17:00 IST)',
+    'Evening (18:00 - 21:00 IST)'
   ];
 
   const toggleDay = (day: string) => {
@@ -80,19 +80,18 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
     setTimeout(() => {
       const aiResponse = {
         sender: 'ai' as const,
-        text: "That is an outstanding response! Using PostgreSQL checkpointers to persist thread state at each node boundary ensures zero data loss, and wrapping tool invocations in retry policies is industry best practice. I have recorded your evaluation: 9.4/10 for technical depth!",
+        text: "That is an outstanding response! Using PostgreSQL checkpointers to persist thread state at each node boundary ensures zero data loss, and wrapping tool invocations in retry policies is industry best practice. I have recorded your response. Let's move on to our next architectural topic!",
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setMessages(prev => [...prev, aiResponse]);
       setIsSynthesizing(false);
-      setInterviewScore(9.4);
     }, 1500);
   };
 
   const sidebarItems: { id: CandidateTab; label: string; icon: string; badge?: string; badgeColor?: string }[] = [
-    { id: 'overview', label: 'My Profile & Applications', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z', badge: '96% Match', badgeColor: 'bg-emerald-500/20 text-emerald-300' },
+    { id: 'overview', label: 'My Profile & Applications', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z', badge: 'Active Stage 3', badgeColor: 'bg-purple-500/20 text-purple-300' },
     { id: 'availability', label: 'Availability Screen', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', badge: isAvailabilitySaved ? 'Confirmed' : 'Pending', badgeColor: isAvailabilitySaved ? 'bg-purple-500/20 text-purple-300' : 'bg-amber-500/20 text-amber-300' },
-    { id: 'studio', label: 'AI Interview Panel', icon: 'M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z', badge: 'Active', badgeColor: 'bg-indigo-500/20 text-indigo-300' },
+    { id: 'studio', label: 'AI Interview Panel', icon: 'M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z', badge: 'In Progress', badgeColor: 'bg-indigo-500/20 text-indigo-300' },
   ];
 
   const currentTabInfo = sidebarItems.find(item => item.id === activeTab);
@@ -168,7 +167,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
               {!isSidebarCollapsed && (
                 <div className="text-left truncate">
                   <p className="text-xs font-bold text-slate-200 truncate">{user.name}</p>
-                  <p className="text-[10px] text-purple-400 truncate">Senior AI Engineer • Rank #1</p>
+                  <p className="text-[10px] text-purple-400 truncate">Senior AI Backend Engineer</p>
                 </div>
               )}
             </div>
@@ -217,103 +216,190 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
           
           {/* VIEW 1: MY PROFILE & APPLICATIONS */}
           {activeTab === 'overview' && (
-            <div className="space-y-6">
-              {/* Profile Overview Card */}
-              <div className="p-8 rounded-3xl bg-gradient-to-r from-purple-950/40 via-slate-900 to-slate-900 border border-purple-500/30 shadow-2xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-                  <div className="flex items-center space-x-5">
-                    <img
-                      src={user.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"}
-                      alt={user.name}
-                      className="w-20 h-20 rounded-2xl object-cover border-2 border-purple-500/50 shadow-xl"
-                    />
-                    <div className="space-y-1">
-                      <div className="flex items-center space-x-3">
-                        <h2 className="text-2xl font-black text-white">{user.name}</h2>
-                        <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/30">
-                          ✓ Verified AI Specialist
+            <div className="space-y-6 animate-in fade-in duration-200">
+              {/* Clean Profile Hero Card */}
+              <div className="p-6 md:p-8 rounded-3xl bg-slate-900/80 border border-slate-800/80 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
+                  <img
+                    src={user.avatarUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"}
+                    alt={user.name}
+                    className="w-20 h-20 md:w-24 md:h-24 rounded-2xl object-cover border border-purple-500/40 shadow-xl shrink-0"
+                  />
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <h2 className="text-2xl font-black text-white tracking-tight">{user.name}</h2>
+                      <span className="px-3 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/30 flex items-center space-x-1">
+                        <span>✓ Verified AI Specialist</span>
+                      </span>
+                      <span className="px-3 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-xs font-bold border border-purple-500/30">
+                        Job Title: Senior AI Backend Engineer
+                      </span>
+                    </div>
+
+                    <p className="text-xs font-medium text-slate-300 flex flex-wrap items-center gap-2">
+                      <span>📧 {user.email}</span>
+                      <span className="text-slate-600">•</span>
+                      <span>⏱️ {user.experienceYears || 6}+ Years Experience</span>
+                      <span className="text-slate-600">•</span>
+                      <span>📍 Remote (IST / UTC+5:30)</span>
+                    </p>
+
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      <span className="text-[11px] text-slate-400 font-bold mr-1">Verified Tech Stack:</span>
+                      {(user.techStack || ['Python Asyncio', 'FastAPI', 'PostgreSQL', 'Docker', 'LangGraph', 'PyTorch']).map((tech, i) => (
+                        <span key={i} className="px-2.5 py-0.5 rounded-lg bg-slate-950/90 border border-slate-800 text-xs font-semibold text-purple-300">
+                          {tech}
                         </span>
-                      </div>
-                      <p className="text-sm text-slate-300">{user.email} • {user.experienceYears || 6} Years Experience</p>
-                      <div className="flex flex-wrap gap-1.5 pt-2">
-                        {(user.techStack || ['Python', 'FastAPI', 'PostgreSQL', 'Docker', 'LangGraph', 'PyTorch']).map((tech, i) => (
-                          <span key={i} className="px-2.5 py-0.5 rounded-lg bg-slate-950/80 border border-slate-800 text-xs font-semibold text-purple-300">
-                            {tech}
-                          </span>
-                        ))}
-                      </div>
+                      ))}
                     </div>
                   </div>
+                </div>
 
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <button
-                      onClick={() => setActiveTab('availability')}
-                      className="px-5 py-3 rounded-2xl bg-slate-900 border border-slate-700 hover:border-purple-500/50 text-slate-200 font-bold text-xs transition-all flex items-center justify-center space-x-2 cursor-pointer"
-                    >
-                      <svg className="w-4 h-4 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      <span>Update Availability</span>
-                    </button>
-                    <button
-                      onClick={() => setActiveTab('studio')}
-                      className="px-5 py-3 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-purple-600/30 transition-all flex items-center justify-center space-x-2 cursor-pointer"
-                    >
-                      <span>Launch AI Interview Studio</span>
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                      </svg>
-                    </button>
-                  </div>
+                <div className="flex flex-col sm:flex-row md:flex-col gap-2.5 shrink-0 self-stretch md:self-center border-t md:border-t-0 pt-4 md:pt-0 border-slate-800/80">
+                  <button
+                    onClick={() => setActiveTab('studio')}
+                    className="px-5 py-3 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-extrabold text-xs shadow-lg shadow-purple-600/25 transition-all cursor-pointer active:scale-95 flex items-center justify-center space-x-2"
+                  >
+                    <span>Launch AI Interview Panel</span>
+                    <span className="text-sm">▶</span>
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('availability')}
+                    className="px-5 py-2.5 rounded-2xl bg-slate-950/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 font-bold text-xs transition-all cursor-pointer flex items-center justify-center space-x-2"
+                  >
+                    <span>Update Availability Preferences</span>
+                  </button>
                 </div>
               </div>
 
-              {/* Active Application & Match Score */}
-              <div className="p-8 rounded-3xl bg-slate-900/80 border border-slate-800/80 shadow-2xl space-y-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-6">
-                  <div>
-                    <h3 className="text-xl font-bold text-white">Active Application Status</h3>
-                    <p className="text-xs text-slate-400">Requisition: <strong className="text-slate-200">Senior AI Backend Engineer</strong> • Sourced via Discovery Agent</p>
+              {/* 2-Column Grid: Pipeline Tracker (2 Cols) + Preparation Guidelines (1 Col) */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                {/* Left: Application & Interview Progress Tracker */}
+                <div className="lg:col-span-2 p-6 rounded-3xl bg-slate-900/80 border border-slate-800/80 shadow-xl space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3.5">
+                    <div>
+                      <h3 className="text-base font-extrabold text-white flex items-center space-x-2">
+                        <span>🚀 Application & Interview Progress</span>
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Job Title: <strong className="text-purple-300">Senior AI Backend Engineer</strong>
+                      </p>
+                    </div>
+                    <span className="px-3 py-1 rounded-xl bg-purple-500/15 text-purple-300 text-xs font-mono font-bold border border-purple-500/30 self-start sm:self-center">
+                      Interview Stage 3 Active
+                    </span>
                   </div>
-                  <div className="flex items-center space-x-3">
-                    <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-extrabold text-xs border border-emerald-500/30">
-                      ★ Top Rank #1
-                    </span>
-                    <span className="px-3 py-1 rounded-full bg-purple-500/20 text-purple-300 font-extrabold text-xs border border-purple-500/30">
-                      96% Match Score
-                    </span>
+
+                  {/* Clean, Minimized Vertical Progress Timeline without internal descriptions */}
+                  <div className="space-y-2.5">
+                    {[
+                      {
+                        stepNumber: "01",
+                        title: "Application & Profile Submitted",
+                        status: "Completed",
+                        date: "July 06, 2026",
+                        state: "completed"
+                      },
+                      {
+                        stepNumber: "02",
+                        title: "Initial Profile Assessment & Screening",
+                        status: "Qualified ✓",
+                        date: "July 06, 2026",
+                        state: "completed"
+                      },
+                      {
+                        stepNumber: "03",
+                        title: "Autonomous AI Interview Studio Session",
+                        status: "Active Session",
+                        date: "In Progress",
+                        state: "active"
+                      },
+                      {
+                        stepNumber: "04",
+                        title: "HR Final Review & Next Steps",
+                        status: "Upcoming",
+                        date: "Pending Stage 3",
+                        state: "pending"
+                      }
+                    ].map((step, idx) => (
+                      <div
+                        key={idx}
+                        className={`py-2.5 px-4 rounded-xl border transition-all flex items-center justify-between gap-3 ${
+                          step.state === 'active'
+                            ? 'bg-gradient-to-r from-purple-900/30 to-slate-900/90 border-purple-500/50 shadow-sm shadow-purple-500/10'
+                            : step.state === 'completed'
+                            ? 'bg-slate-950/40 border-emerald-500/30'
+                            : 'bg-slate-950/20 border-slate-800/60 opacity-60'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-3">
+                          <div className={`w-7 h-7 rounded-lg font-mono font-bold text-xs flex items-center justify-center shrink-0 border ${
+                            step.state === 'active'
+                              ? 'bg-purple-600 text-white border-purple-400'
+                              : step.state === 'completed'
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                              : 'bg-slate-900 text-slate-500 border-slate-800'
+                          }`}>
+                            {step.state === 'completed' ? '✓' : step.stepNumber}
+                          </div>
+                          <h4 className={`text-xs font-bold ${step.state === 'active' ? 'text-white' : step.state === 'completed' ? 'text-emerald-300' : 'text-slate-400'}`}>
+                            {step.title}
+                          </h4>
+                        </div>
+
+                        <div className="flex items-center space-x-3 shrink-0">
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold font-mono ${
+                            step.state === 'active'
+                              ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                              : step.state === 'completed'
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : 'bg-slate-800/80 text-slate-500'
+                          }`}>
+                            {step.status}
+                          </span>
+                          <span className="text-[10px] text-slate-500 min-w-[70px] text-right">{step.date}</span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
-                {/* 4-Step Pipeline Status Tracker */}
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 pt-2">
-                  {[
-                    { step: "1. Resume Vectorized", status: "Completed", date: "July 06, 2026", done: true },
-                    { step: "2. Assessment Match", status: "96% Top Rank", date: "July 06, 2026", done: true },
-                    { step: "3. AI Studio Session", status: "Scheduled & Active", date: "July 10, 2026", done: true, active: true },
-                    { step: "4. HR HITL Review", status: "In Progress", date: "Pending Final Approval", done: false }
-                  ].map((s, idx) => (
-                    <div
-                      key={idx}
-                      className={`p-5 rounded-2xl border transition-all ${
-                        s.active ? 'bg-purple-500/10 border-purple-500/50 shadow-lg shadow-purple-500/10' :
-                        s.done ? 'bg-slate-950/60 border-emerald-500/30' : 'bg-slate-950/30 border-slate-800/80 opacity-60'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className={`text-xs font-bold ${s.active ? 'text-purple-300' : s.done ? 'text-emerald-400' : 'text-slate-400'}`}>
-                          {s.step}
-                        </span>
-                        <span className={`text-[10px] px-2 py-0.5 rounded font-mono ${
-                          s.active ? 'bg-purple-500/20 text-purple-300' : s.done ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'
-                        }`}>
-                          {s.status}
-                        </span>
+                {/* Right: Interview Guidelines & Preparation Checklist */}
+                <div className="p-6 md:p-8 rounded-3xl bg-slate-900/80 border border-slate-800/80 shadow-xl space-y-6">
+                  <div className="border-b border-slate-800/80 pb-5">
+                    <h3 className="text-lg font-extrabold text-white flex items-center justify-between">
+                      <span>📋 Interview Preparation</span>
+                      <span className="text-xs font-mono text-purple-300 bg-purple-500/10 px-2.5 py-0.5 rounded-lg border border-purple-500/20">
+                        Stage 3 Active
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Guidelines and tips for your upcoming AI technical assessment.
+                    </p>
+                  </div>
+
+                  <div className="space-y-4">
+                    {[
+                      { title: "Technical Topics & Scope", desc: "Be prepared to discuss asynchronous Python architectures, LangGraph checkpointers, and PostgreSQL vector indexing." },
+                      { title: "Assessment Format", desc: "Interactive conversational dialogue. You can speak naturally or type out architectural explanations." },
+                      { title: "Flexible Scheduling", desc: "You have complete control over your schedule. Update your availability anytime from the Availability screen." },
+                      { title: "Support & Assistance", desc: "Need accommodations or technical support? Reach out to our team at candidate-support@ai-universe.dev." }
+                    ].map((guide, idx) => (
+                      <div key={idx} className="p-4 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-1">
+                        <h4 className="text-xs font-bold text-purple-300">{guide.title}</h4>
+                        <p className="text-[11px] text-slate-400 leading-relaxed">{guide.desc}</p>
                       </div>
-                      <p className="text-[11px] text-slate-400">{s.date}</p>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      onClick={() => setActiveTab('studio')}
+                      className="w-full py-3 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-purple-600/20 transition-all cursor-pointer flex items-center justify-center space-x-2"
+                    >
+                      <span>Enter AI Interview Studio →</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -330,7 +416,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                       <span>Interview Availability & Scheduling Screen</span>
                     </h2>
                     <p className="text-xs text-slate-400 mt-1">
-                      Set your preferred dates, time windows, and timezone. Your selections instantly sync with the **Interview Agent** to schedule your AI Studio sessions.
+                      Set your preferred dates and time windows (IST). Your selections instantly sync with the **Interview Agent** to schedule your AI Studio sessions.
                     </p>
                   </div>
                   <span className={`px-3 py-1 rounded-full text-xs font-bold border ${
@@ -399,28 +485,13 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                     </div>
                   </div>
 
-                  {/* Select Timezone */}
-                  <div className="space-y-3 max-w-md">
-                    <label className="text-sm font-bold text-white block">3. Confirm Your Timezone</label>
-                    <select
-                      value={timezone}
-                      onChange={(e) => { setTimezone(e.target.value); setIsAvailabilitySaved(false); }}
-                      className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-                    >
-                      <option>EST (UTC-5) - Eastern Standard Time</option>
-                      <option>PST (UTC-8) - Pacific Standard Time</option>
-                      <option>UTC (UTC+0) - Coordinated Universal Time</option>
-                      <option>CET (UTC+1) - Central European Time</option>
-                      <option>IST (UTC+5:30) - Indian Standard Time</option>
-                    </select>
-                  </div>
 
                   <div className="pt-4 border-t border-slate-800 flex items-center justify-end space-x-4">
                     <button
                       type="button"
                       onClick={() => {
                         setSelectedDays(['Monday', 'Wednesday', 'Friday']);
-                        setSelectedSlots(['Morning (09:00 - 12:00 EST)', 'Afternoon (13:00 - 17:00 EST)']);
+                        setSelectedSlots(['Morning (09:00 - 12:00 IST)', 'Afternoon (13:00 - 17:00 IST)']);
                         setIsAvailabilitySaved(false);
                       }}
                       className="px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 text-xs font-semibold transition-all cursor-pointer"
@@ -450,17 +521,15 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                       <span>AI Interview Panel & Studio Workspace</span>
                     </h2>
                     <p className="text-xs text-slate-400 mt-1">
-                      Interactive technical assessment conducted by the **Interview Agent**. Evaluated in real-time with **Critic Agent Fairness Auditing**.
+                      Interactive technical & architectural assessment conducted by the **Interview Agent**.
                     </p>
                   </div>
                   <div className="flex items-center space-x-3">
-                    {interviewScore && (
-                      <span className="px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-300 font-extrabold text-xs border border-indigo-500/30">
-                        AI Score: {interviewScore}/10.0
-                      </span>
-                    )}
+                    <span className="px-3 py-1 rounded-full bg-purple-500/20 text-purple-300 font-extrabold text-xs border border-purple-500/30">
+                      ● Active Assessment Stage
+                    </span>
                     <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-extrabold text-xs border border-emerald-500/30 flex items-center space-x-1">
-                      <span>✓ Critic Audit: 100% Fair</span>
+                      <span>✓ Verified AI Interviewer</span>
                     </span>
                   </div>
                 </div>
