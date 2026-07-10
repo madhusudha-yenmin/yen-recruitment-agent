@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { User, HRTab, CandidateMatch, AgentLog, CandidateStatus } from '../../types';
 
 interface HRDashboardProps {
@@ -53,6 +53,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
   const [isRunningWorkflow, setIsRunningWorkflow] = useState(false);
   const [activeStage, setActiveStage] = useState<number | null>(4); // Default paused at HITL (Stage 4)
   const [currentPage, setCurrentPage] = useState(1);
+  const [leaderboardPage, setLeaderboardPage] = useState(1);
   const itemsPerPage = 10;
 
   // Score Definition Rubric Weights State (Editable by HR)
@@ -82,163 +83,26 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
   const [newCardSkills, setNewCardSkills] = useState("Variant 1, Python, LangGraph");
   const [saveSuccessMsg, setSaveSuccessMsg] = useState("");
 
-  // Candidate Pool State
-  const [candidates, setCandidates] = useState<CandidateMatch[]>([
-    {
-      id: 'cand-001',
-      name: 'Alice Smith',
-      email: 'alice.smith@example.com',
-      matchScore: 96,
-      ranking: 1,
-      skills: ['Python', 'FastAPI', 'PostgreSQL', 'Docker', 'LangGraph'],
-      experience: '6.0 Years',
-      salary: '$145,000 / yr',
-      location: 'Remote (US)',
-      status: 'Pending HR Review',
-      recommendation: 'strong-hire',
-      interviewStatus: 'Scheduled',
-      interviewDate: 'July 10, 2026 @ 10:00 AM IST',
-      interviewMode: 'AI',
-      evaluationDetails: {
-        technical: 92,
-        communication: 90,
-        problemSolving: 88,
-        overall: 88.8,
-        criticPassed: true
+  // Candidate Pool State (Mapped from Database)
+  const [candidates, setCandidates] = useState<CandidateMatch[]>([]);
+
+  useEffect(() => {
+    const fetchCandidates = async () => {
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+        const res = await fetch(`${apiUrl}/api/v1/recruitment/candidates`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && Array.isArray(data.candidates)) {
+            setCandidates(data.candidates);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load candidates from database:', err);
       }
-    },
-    {
-      id: 'cand-002',
-      name: 'Charlie Brown',
-      email: 'charlie.brown@example.com',
-      matchScore: 84,
-      ranking: 2,
-      skills: ['Python', 'PostgreSQL', 'Docker', 'LangGraph', 'Django'],
-      experience: '4.0 Years',
-      salary: '$135,000 / yr',
-      location: 'Remote (EU)',
-      status: 'Pending HR Review',
-      recommendation: 'hire',
-      interviewStatus: 'Scheduled',
-      interviewDate: 'July 11, 2026 @ 2:00 PM IST',
-      interviewMode: 'AI',
-      evaluationDetails: {
-        technical: 85,
-        communication: 88,
-        problemSolving: 82,
-        overall: 85.0,
-        criticPassed: true
-      }
-    },
-    {
-      id: 'cand-003',
-      name: 'Bob Jones',
-      email: 'bob.jones@example.com',
-      matchScore: 56,
-      ranking: 3,
-      skills: ['Python', 'React', 'Next.js', 'Tailwind'],
-      experience: '2.0 Years',
-      salary: '$110,000 / yr',
-      location: 'Hybrid (NY)',
-      status: 'Rejected',
-      recommendation: 'no-hire',
-      interviewStatus: 'Pending',
-      interviewMode: 'Manual'
-    },
-    {
-      id: 'cand-004',
-      name: 'David Miller',
-      email: 'david.miller@example.com',
-      matchScore: 91,
-      ranking: 4,
-      skills: ['Python', 'FastAPI', 'Kubernetes', 'AWS', 'LangChain'],
-      experience: '7.0 Years',
-      salary: '$155,000 / yr',
-      location: 'Remote (US)',
-      status: 'Offer Sent',
-      recommendation: 'strong-hire',
-      interviewStatus: 'Scheduled',
-      interviewDate: 'July 08, 2026 @ 11:30 AM IST',
-      interviewMode: 'AI',
-      evaluationDetails: {
-        technical: 94,
-        communication: 89,
-        problemSolving: 91,
-        overall: 91.3,
-        criticPassed: true
-      }
-    },
-    {
-      id: 'cand-005',
-      name: 'Eva Green',
-      email: 'eva.green@example.com',
-      role: 'AI Backend Engineer',
-      matchScore: 89,
-      ranking: 5,
-      skills: ['Python', 'FastAPI', 'PyTorch', 'Qdrant'],
-      experience: '5.0 Years',
-      salary: '$140,000 / yr',
-      location: 'Remote (US)',
-      status: 'Applied',
-      recommendation: 'strong-hire',
-      interviewStatus: 'Pending',
-      evaluationDetails: {
-        technical: 90,
-        communication: 88,
-        problemSolving: 89,
-        overall: 89.0,
-        criticPassed: true
-      }
-    },
-    {
-      id: 'cand-006',
-      name: 'Frank Castle',
-      email: 'frank.castle@example.com',
-      role: 'AI Systems Architect',
-      matchScore: 82,
-      ranking: 6,
-      skills: ['Python', 'Golang', 'Docker', 'LangGraph'],
-      experience: '6.5 Years',
-      salary: '$150,000 / yr',
-      location: 'Hybrid (SF)',
-      status: 'Applied',
-      recommendation: 'hire',
-      interviewStatus: 'In Progress',
-      interviewDate: 'July 09, 2026 @ 3:30 PM IST',
-      interviewMode: 'Manual',
-      evaluationDetails: {
-        technical: 84,
-        communication: 80,
-        problemSolving: 82,
-        overall: 82.0,
-        criticPassed: true
-      }
-    },
-    {
-      id: 'cand-007',
-      name: 'Grace Hopper',
-      email: 'grace.hopper@example.com',
-      role: 'Senior AI Engineer',
-      matchScore: 95,
-      ranking: 7,
-      skills: ['Python', 'Compiler AI', 'FastAPI', 'LangChain'],
-      experience: '8.0 Years',
-      salary: '$160,000 / yr',
-      location: 'Remote (US)',
-      status: 'Hold',
-      recommendation: 'strong-hire',
-      interviewStatus: 'Completed',
-      interviewDate: 'July 08, 2026 @ 1:00 PM IST',
-      interviewMode: 'AI',
-      evaluationDetails: {
-        technical: 96,
-        communication: 94,
-        problemSolving: 95,
-        overall: 95.0,
-        criticPassed: true
-      }
-    }
-  ]);
+    };
+    fetchCandidates();
+  }, []);
 
   // Questionnaire State (Generated from JD)
   const [questions, setQuestions] = useState([
@@ -429,8 +293,8 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
   // Telemetry Audit Logs
   const [logs, setLogs] = useState<AgentLog[]>([
     { id: 'log-1', timestamp: '14:20:01', agentName: 'RecruitmentOrchestrator', action: 'Initialized workflow session & delegated Stage 1 to Discovery Agent', latency: '110ms', tokens: 120, cost: '$0.0004', status: 'success' },
-    { id: 'log-2', timestamp: '14:20:03', agentName: 'CandidateDiscoveryAgent', action: 'Analyzed JD, generated LinkedIn Boolean query & parsed 142 resumes into 1536d vectors', latency: '890ms', tokens: 1840, cost: '$0.0045', status: 'success' },
-    { id: 'log-3', timestamp: '14:20:04', agentName: 'CandidateAssessmentAgent', action: 'Computed multi-dimensional match scores & ranked candidate pool (Top match: Alice Smith @ 96%)', latency: '250ms', tokens: 410, cost: '$0.0012', status: 'success' },
+    { id: 'log-2', timestamp: '14:20:03', agentName: 'CandidateDiscoveryAgent', action: 'Analyzed JD, generated LinkedIn Boolean query & indexed 142 resumes into candidate pool', latency: '890ms', tokens: 1840, cost: '$0.0045', status: 'success' },
+    { id: 'log-3', timestamp: '14:20:04', agentName: 'CandidateAssessmentAgent', action: 'Computed ATS similarity match scores & ranked candidate pool (Top match: Alice Smith @ 96%)', latency: '250ms', tokens: 410, cost: '$0.0012', status: 'success' },
     { id: 'log-4', timestamp: '14:20:10', agentName: 'InterviewAgent', action: 'Scheduled studio sessions, generated 3 tailored questions & audited fairness (PASSED)', latency: '650ms', tokens: 812, cost: '$0.0028', status: 'success' },
     { id: 'log-5', timestamp: '14:20:15', agentName: 'HiringDecisionAgent', action: 'Synthesized comparative analytics & paused execution at HITL checkpointer waiting for Recruiter review', latency: '380ms', tokens: 290, cost: '$0.0010', status: 'success' }
   ]);
@@ -492,6 +356,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
 
       setCandidates(newCandidates);
       setCurrentPage(1);
+      setLeaderboardPage(1);
 
       // Scroll to leaderboard after a short delay to let the DOM update
       setTimeout(() => {
@@ -847,7 +712,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                 <div className="p-5 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900/90 to-slate-950 border border-slate-800/80 shadow-xl relative overflow-hidden group hover:border-indigo-500/50 transition-all">
                   <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/10 rounded-full blur-xl group-hover:bg-indigo-500/20 transition-all" />
                   <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Profiles Sourced</p>
-                  <p className="text-3xl font-black text-white mt-2">{totalProfilesCount} <span className="text-xs font-normal text-indigo-400 ml-1">1536d Vectors</span></p>
+                  <p className="text-3xl font-black text-white mt-2">{totalProfilesCount} <span className="text-xs font-normal text-indigo-400 ml-1">Candidate Profiles</span></p>
                 </div>
 
                 <div className="p-5 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900/90 to-slate-950 border border-slate-800/80 shadow-xl relative overflow-hidden group hover:border-emerald-500/50 transition-all">
@@ -899,7 +764,14 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/60">
-                      {candidates.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((c) => (
+                      {candidates.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-medium">
+                            No candidate records found in database. Upload a resume or run a discovery search above to populate.
+                          </td>
+                        </tr>
+                      ) : 
+                        candidates.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((c) => (
                         <tr key={c.id} className="hover:bg-slate-950/40 transition-colors">
                           <td className="py-4 pr-4 font-bold text-white flex items-center space-x-3">
                             <span className="w-6 h-6 rounded-lg bg-slate-800 flex items-center justify-center text-slate-300 text-[11px]">
@@ -1094,8 +966,8 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                 {/* 5-Agent Stage Tracker Badges */}
                 <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 pt-4 border-t border-slate-800">
                   {[
-                    { stage: "1. Discovery Agent", desc: "JD analysis, Boolean query & vector parsing", score: "142 Sourced", id: 1 },
-                    { stage: "2. Assessment Agent", desc: "Multi-dimensional scoring & pool ranking", score: "Top: 96%", id: 2 },
+                    { stage: "1. Discovery Agent", desc: "JD analysis, Boolean query & resume indexing", score: "142 Sourced", id: 1 },
+                    { stage: "2. Assessment Agent", desc: "ATS similarity scoring & pool ranking", score: "Top: 96%", id: 2 },
                     { stage: "3. Interview Agent", desc: "Tailored question gen & studio scheduling", score: "3 Sched", id: 3 },
                     { stage: "4. HITL Checkpoint", desc: "Execution paused waiting for Recruiter decision", score: "Action Required", id: 4, isHitl: true },
                     { stage: "5. Decision Agent", desc: "Comparative analytics & offer automation", score: "Ready", id: 5 }
@@ -1150,7 +1022,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                 ) : (
                   <>
                     <div className="space-y-4">
-                      {candidates.sort((a, b) => b.matchScore - a.matchScore).slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((cand) => (
+                      {candidates.sort((a, b) => b.matchScore - a.matchScore).slice((leaderboardPage - 1) * itemsPerPage, leaderboardPage * itemsPerPage).map((cand) => (
                         <div
                           key={cand.id}
                           className={`p-6 rounded-3xl bg-slate-950/60 border transition-all ${cand.ranking === 1 ? 'border-indigo-500/50 shadow-xl shadow-indigo-500/10 bg-gradient-to-r from-indigo-950/30 via-slate-950 to-slate-950' : 'border-slate-800/80'
@@ -1225,9 +1097,9 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                     </div>
                     {candidates.length > itemsPerPage && (
                       <div className="flex justify-between items-center mt-4 text-xs font-semibold text-slate-400">
-                        <button onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))} disabled={currentPage === 1} className="px-3 py-1.5 bg-slate-800 rounded-lg hover:bg-slate-700 disabled:opacity-50">Previous</button>
-                        <span>Page {currentPage} of {Math.ceil(candidates.length / itemsPerPage)}</span>
-                        <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(candidates.length / itemsPerPage)))} disabled={currentPage >= Math.ceil(candidates.length / itemsPerPage)} className="px-3 py-1.5 bg-slate-800 rounded-lg hover:bg-slate-700 disabled:opacity-50">Next</button>
+                        <button onClick={() => setLeaderboardPage(prev => Math.max(prev - 1, 1))} disabled={leaderboardPage === 1} className="px-3 py-1.5 bg-slate-800 rounded-lg hover:bg-slate-700 disabled:opacity-50">Previous</button>
+                        <span>Page {leaderboardPage} of {Math.ceil(candidates.length / itemsPerPage)}</span>
+                        <button onClick={() => setLeaderboardPage(prev => Math.min(prev + 1, Math.ceil(candidates.length / itemsPerPage)))} disabled={leaderboardPage >= Math.ceil(candidates.length / itemsPerPage)} className="px-3 py-1.5 bg-slate-800 rounded-lg hover:bg-slate-700 disabled:opacity-50">Next</button>
                       </div>
                     )}
                   </>
@@ -2150,7 +2022,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                                       <h4 className="text-xs font-bold text-white group-hover:text-indigo-300 transition-colors">
                                         {cand.name}
                                       </h4>
-                                      {cand.linkedinUrl && (
+                                      {cand.linkedinUrl && col.id !== 'Pending HR Review' && col.title !== 'Scheduled' && col.id !== 'Applied' && col.title !== 'Candidates' && (
                                         <a
                                           href={cand.linkedinUrl}
                                           target="_blank"
@@ -2335,7 +2207,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                 <div className="space-y-4">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center space-x-2">
-                      <h3 className="text-base font-bold text-white">Multi-Dimensional Similarity Scoring Rubric (100 Max Score)</h3>
+                      <h3 className="text-base font-bold text-white">Candidate Evaluation Scoring Rubric (100 Max Score)</h3>
                       <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[10px] font-bold border border-indigo-500/30">
                         Editable by HR
                       </span>

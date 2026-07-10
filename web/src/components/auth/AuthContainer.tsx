@@ -82,7 +82,7 @@ export const AuthContainer: React.FC<AuthContainerProps> = ({ onLogin }) => {
         <div className="text-center text-xs text-slate-500 flex items-center justify-center space-x-4">
           <span>Protected by LangGraph Checkpointer</span>
           <span>•</span>
-          <span>1536d Vector Embeddings</span>
+          <span>Semantic ATS Matcher</span>
           <span>•</span>
           <span>HITL Validated</span>
         </div>

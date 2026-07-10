@@ -380,7 +380,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
 
                   <div className="space-y-4">
                     {[
-                      { title: "Technical Topics & Scope", desc: "Be prepared to discuss asynchronous Python architectures, LangGraph checkpointers, and PostgreSQL vector indexing." },
+                      { title: "Technical Topics & Scope", desc: "Be prepared to discuss asynchronous Python architectures, LangGraph checkpointers, and PostgreSQL database indexing." },
                       { title: "Assessment Format", desc: "Interactive conversational dialogue. You can speak naturally or type out architectural explanations." },
                       { title: "Flexible Scheduling", desc: "You have complete control over your schedule. Update your availability anytime from the Availability screen." },
                       { title: "Support & Assistance", desc: "Need accommodations or technical support? Reach out to our team at candidate-support@ai-universe.dev." }
@@ -584,7 +584,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                     <span className="text-slate-500">Tip: You can use sample answers to quickly test the AI evaluation engine.</span>
                     <button
                       type="button"
-                      onClick={() => setCurrentInput("When an agent node crashes in LangGraph, the PostgreSQL checkpointer restores the exact state dictionary from the last checkpoint. This allows retry handlers or fallback nodes to resume execution without re-running previous LLM calls or losing vector context.")}
+                      onClick={() => setCurrentInput("When an agent node crashes in LangGraph, the PostgreSQL checkpointer restores the exact state dictionary from the last checkpoint. This allows retry handlers or fallback nodes to resume execution without re-running previous LLM calls or losing candidate context.")}
                       className="text-purple-400 hover:text-purple-300 font-semibold underline cursor-pointer"
                     >
                       ⚡ Use Sample Technical Answer
