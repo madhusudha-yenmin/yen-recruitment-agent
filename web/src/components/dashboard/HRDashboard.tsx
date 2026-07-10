@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { User, HRTab, CandidateMatch, AgentLog, CandidateStatus } from '../../types';
 
 interface HRDashboardProps {
@@ -71,7 +71,6 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
     compensation: 10,
     locationNotice: 10
   });
-  const [saveSuccessMsg, setSaveSuccessMsg] = useState("");
 
   // Kanban Drag & Drop and Manual Card Entry State (`manual and agent`)
   const [draggedCandId, setDraggedCandId] = useState<string | null>(null);
@@ -81,33 +80,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
   const [newCardEmail, setNewCardEmail] = useState("");
   const [newCardScore, setNewCardScore] = useState("88");
   const [newCardSkills, setNewCardSkills] = useState("Variant 1, Python, LangGraph");
-
-  // Score Definition Rubric Weights State (Editable by HR)
-  const [rubricWeights, setRubricWeights] = useState({
-    technical: 45,
-    experience: 25,
-    education: 10,
-    compensation: 10,
-    locationNotice: 10
-  });
-  const [isEditingWeights, setIsEditingWeights] = useState(false);
-  const [tempWeights, setTempWeights] = useState({
-    technical: 45,
-    experience: 25,
-    education: 10,
-    compensation: 10,
-    locationNotice: 10
-  });
   const [saveSuccessMsg, setSaveSuccessMsg] = useState("");
-
-  // Kanban Drag & Drop and Manual Card Entry State (`manual and agent`)
-  const [draggedCandId, setDraggedCandId] = useState<string | null>(null);
-  const [dragOverCol, setDragOverCol] = useState<CandidateStatus | null>(null);
-  const [showAddCardModal, setShowAddCardModal] = useState<CandidateStatus | null>(null);
-  const [newCardName, setNewCardName] = useState("");
-  const [newCardEmail, setNewCardEmail] = useState("");
-  const [newCardScore, setNewCardScore] = useState("88");
-  const [newCardSkills, setNewCardSkills] = useState("Variant 1, Python, LangGraph");
 
   // Candidate Pool State
   const [candidates, setCandidates] = useState<CandidateMatch[]>([
@@ -310,7 +283,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
     setCandidates(prev => prev.map(c => c.id === candId ? { ...c, interviewStatus: newStatus } : c));
   };
 
-  const handleLaunchPipeline = (e: React.FormEvent) => {
+  const handleLaunchPipeline = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsRunningWorkflow(true);
     setActiveStage(1);
@@ -335,7 +308,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
       }
 
       const data = await response.json();
-      
+
       const newCandidates: CandidateMatch[] = data.candidates.map((c: any, index: number) => {
         return {
           id: c.candidate_id || `cand-${index}`,
@@ -362,15 +335,15 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
       setTimeout(() => {
         leaderboardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 150);
-      
+
       setLogs(prev => [
         { id: `log-${Date.now()}-1`, timestamp: new Date().toLocaleTimeString(), agentName: 'CandidateDiscoveryAgent', action: `Sourced candidates via Fast Serper Search. Query: ${data.query_used}`, latency: '850ms', tokens: 0, cost: '$0.00', status: 'success' },
         ...prev
       ]);
-      
+
       setActiveStage(5);
       setIsRunningWorkflow(false);
-      
+
     } catch (err) {
       console.error("Error launching pipeline:", err);
       setLogs(prev => [
@@ -621,11 +594,10 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`w-full px-3.5 py-3 rounded-xl text-xs font-semibold transition-all flex items-center justify-between cursor-pointer group ${
-                  isActive
-                    ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-600/25'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-950/60'
-                }`}
+                className={`w-full px-3.5 py-3 rounded-xl text-xs font-semibold transition-all flex items-center justify-between cursor-pointer group ${isActive
+                  ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg shadow-indigo-600/25'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-950/60'
+                  }`}
                 title={isSidebarCollapsed ? item.label : undefined}
               >
                 <div className="flex items-center space-x-3 truncate">
@@ -636,9 +608,8 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                 </div>
 
                 {!isSidebarCollapsed && item.badge !== undefined && (
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold shrink-0 ${
-                    item.badgeColor ? item.badgeColor : isActive ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
-                  }`}>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold shrink-0 ${item.badgeColor ? item.badgeColor : isActive ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
+                    }`}>
                     {item.badge}
                   </span>
                 )}
@@ -705,7 +676,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
 
         {/* Tab Content Rendering */}
         <div className="p-6 md:p-8 space-y-8 animate-in fade-in duration-300">
-          
+
           {/* VIEW 1: OVERVIEW (List of profiles, No of Hired, No of Rejected) */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
@@ -775,10 +746,10 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                             <div>
                               <p className="text-slate-100">{c.name}</p>
                               {c.linkedinUrl && (
-                                <a 
-                                  href={c.linkedinUrl} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer" 
+                                <a
+                                  href={c.linkedinUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
                                   className="text-[11px] font-bold text-[#0A66C2] hover:text-blue-400 transition-colors flex items-center space-x-1 mt-0.5"
                                 >
                                   <span>Connect on LinkedIn</span>
@@ -790,11 +761,10 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                             </div>
                           </td>
                           <td className="py-4 px-4 font-black">
-                            <span className={`px-2 py-1 rounded-lg ${
-                              c.matchScore >= 90 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
+                            <span className={`px-2 py-1 rounded-lg ${c.matchScore >= 90 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
                               c.matchScore >= 75 ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' :
-                              'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                            }`}>
+                                'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                              }`}>
                               {c.matchScore}%
                             </span>
                           </td>
@@ -810,22 +780,20 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                           </td>
                           <td className="py-4 px-4 text-slate-300">{c.experience}</td>
                           <td className="py-4 px-4">
-                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                              c.interviewStatus === 'Scheduled' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' :
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${c.interviewStatus === 'Scheduled' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' :
                               c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30 animate-pulse' :
-                              c.interviewStatus === 'Completed' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
-                              'bg-slate-800 text-slate-400'
-                            }`}>
+                                c.interviewStatus === 'Completed' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
+                                  'bg-slate-800 text-slate-400'
+                              }`}>
                               ● {c.interviewStatus}
                             </span>
                           </td>
                           <td className="py-4 pl-4 text-right">
-                            <span className={`px-2.5 py-1 rounded-xl text-xs font-bold ${
-                              c.status === 'Offer Sent' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' :
+                            <span className={`px-2.5 py-1 rounded-xl text-xs font-bold ${c.status === 'Offer Sent' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' :
                               c.status === 'Rejected' ? 'bg-red-500/20 text-red-300 border border-red-500/40' :
-                              c.status === 'Hold' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' :
-                              'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40'
-                            }`}>
+                                c.status === 'Hold' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' :
+                                  'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40'
+                              }`}>
                               {c.status}
                             </span>
                           </td>
@@ -975,19 +943,17 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                     return (
                       <div
                         key={s.id}
-                        className={`p-4 rounded-2xl border transition-all ${
-                          isActive && s.isHitl ? 'bg-amber-500/10 border-amber-500/50 shadow-lg shadow-amber-500/10 animate-pulse' :
+                        className={`p-4 rounded-2xl border transition-all ${isActive && s.isHitl ? 'bg-amber-500/10 border-amber-500/50 shadow-lg shadow-amber-500/10 animate-pulse' :
                           isActive ? 'bg-indigo-500/10 border-indigo-500/50 shadow-lg shadow-indigo-500/10' :
-                          isPast ? 'bg-slate-950/60 border-emerald-500/30' : 'bg-slate-950/40 border-slate-800/80 opacity-60'
-                        }`}
+                            isPast ? 'bg-slate-950/60 border-emerald-500/30' : 'bg-slate-950/40 border-slate-800/80 opacity-60'
+                          }`}
                       >
                         <div className="flex items-center justify-between mb-1.5">
                           <span className={`text-xs font-bold ${isActive && s.isHitl ? 'text-amber-400' : isActive ? 'text-indigo-400' : isPast ? 'text-emerald-400' : 'text-slate-400'}`}>
                             {s.stage}
                           </span>
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
-                            isActive && s.isHitl ? 'bg-amber-500/20 text-amber-300' : isPast ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'
-                          }`}>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${isActive && s.isHitl ? 'bg-amber-500/20 text-amber-300' : isPast ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'
+                            }`}>
                             {s.score}
                           </span>
                         </div>
@@ -1022,28 +988,26 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                 ) : (
                   <>
                     <div className="space-y-4">
-                      {candidates.sort((a,b) => b.matchScore - a.matchScore).slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((cand) => (
+                      {candidates.sort((a, b) => b.matchScore - a.matchScore).slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((cand) => (
                         <div
                           key={cand.id}
-                          className={`p-6 rounded-3xl bg-slate-950/60 border transition-all ${
-                            cand.ranking === 1 ? 'border-indigo-500/50 shadow-xl shadow-indigo-500/10 bg-gradient-to-r from-indigo-950/30 via-slate-950 to-slate-950' : 'border-slate-800/80'
-                          }`}
+                          className={`p-6 rounded-3xl bg-slate-950/60 border transition-all ${cand.ranking === 1 ? 'border-indigo-500/50 shadow-xl shadow-indigo-500/10 bg-gradient-to-r from-indigo-950/30 via-slate-950 to-slate-950' : 'border-slate-800/80'
+                            }`}
                         >
                           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                             <div className="flex items-start space-x-4">
-                              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg shrink-0 ${
-                                cand.ranking === 1 ? 'bg-gradient-to-tr from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/30' : 'bg-slate-800 text-slate-300'
-                              }`}>
+                              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg shrink-0 ${cand.ranking === 1 ? 'bg-gradient-to-tr from-indigo-500 to-purple-600 text-white shadow-lg shadow-indigo-500/30' : 'bg-slate-800 text-slate-300'
+                                }`}>
                                 #{cand.ranking}
                               </div>
                               <div className="space-y-1">
                                 <div className="flex items-center space-x-3">
                                   <h3 className="text-base font-extrabold text-white">{cand.name}</h3>
                                   {cand.linkedinUrl && (
-                                    <a 
-                                      href={cand.linkedinUrl} 
-                                      target="_blank" 
-                                      rel="noopener noreferrer" 
+                                    <a
+                                      href={cand.linkedinUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
                                       className="px-2 py-0.5 rounded-full bg-[#0A66C2]/10 text-[#0A66C2] text-[10px] font-bold hover:bg-[#0A66C2]/20 transition-colors flex items-center space-x-1 border border-[#0A66C2]/30"
                                     >
                                       <span>Connect</span>
@@ -1076,9 +1040,8 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                             <div className="flex items-center justify-between lg:justify-end gap-8 border-t lg:border-t-0 pt-4 lg:pt-0 border-slate-800 shrink-0">
                               <div className="text-center lg:text-right">
                                 <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Overall Match</p>
-                                <p className={`text-3xl font-black ${
-                                  cand.matchScore >= 90 ? 'text-emerald-400' : cand.matchScore >= 75 ? 'text-indigo-400' : 'text-amber-400'
-                                }`}>
+                                <p className={`text-3xl font-black ${cand.matchScore >= 90 ? 'text-emerald-400' : cand.matchScore >= 75 ? 'text-indigo-400' : 'text-amber-400'
+                                  }`}>
                                   {cand.matchScore}%
                                 </p>
                               </div>
@@ -1123,7 +1086,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
               </div>
             </div>
           )}
-          
+
           {/* VIEW 4: INTERVIEW STATUS (Scheduled / Pending) */}
           {/* VIEW 4: INTERVIEW STATUS (Structured, Ultra-Neat Card Grid & Tracker) */}
           {activeTab === 'interviews' && (
@@ -1148,1100 +1111,1050 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                 </div>
               </div>
 
-                <div className="grid grid-cols-1 gap-4">
-                  {candidates.map((cand) => (
-                    <div key={cand.id} className="p-6 rounded-3xl bg-slate-950/60 border border-slate-800/80 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                      <div className="space-y-2">
-                        <div className="flex items-center space-x-3">
-                          <h3 className="text-base font-bold text-white">{cand.name}</h3>
-                          {cand.linkedinUrl && (
-                            <a 
-                              href={cand.linkedinUrl} 
-                              target="_blank" 
-                              rel="noopener noreferrer" 
-                              className="px-2 py-0.5 rounded-full bg-[#0A66C2]/10 text-[#0A66C2] text-[10px] font-bold hover:bg-[#0A66C2]/20 transition-colors flex items-center space-x-1 border border-[#0A66C2]/30"
-                            >
-                              <span>Connect</span>
-                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                              </svg>
-                            </a>
-                          )}
-                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                            cand.interviewStatus === 'Scheduled' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                          }`}>
-                            ● {cand.interviewStatus}
-                          </span>
-              {/* Separate Status Filter Bar (Row 2) */}
-              <div className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800/80 shadow-xl flex items-center justify-start overflow-x-auto">
-                <div className="flex items-center gap-2 w-full">
-                  {(['all', 'Pending', 'Scheduled', 'In Progress', 'Completed'] as const).map((status) => {
-                    const count = status === 'all'
-                      ? candidates.length
-                      : candidates.filter(c => status === 'In Progress' ? (c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress') : c.interviewStatus === status).length;
+                        {/* Separate Status Filter Bar (Row 2) */}
+                        <div className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800/80 shadow-xl flex items-center justify-start overflow-x-auto">
+                          <div className="flex items-center gap-2 w-full">
+                            {(['all', 'Pending', 'Scheduled', 'In Progress', 'Completed'] as const).map((status) => {
+                              const count = status === 'all'
+                                ? candidates.length
+                                : candidates.filter(c => status === 'In Progress' ? (c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress') : c.interviewStatus === status).length;
 
-                    return (
-                      <button
-                        key={status}
-                        onClick={() => setInterviewFilter(status)}
-                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-2 border shrink-0 ${
-                          interviewFilter === status
-                            ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-purple-500 shadow-md shadow-purple-600/30'
-                            : 'bg-slate-950/60 text-slate-400 border-slate-800/80 hover:text-white hover:bg-slate-900'
-                        }`}
-                      >
-                        <span>{status === 'all' ? 'All Candidates' : status}</span>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-black ${
-                          interviewFilter === status ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
-                        }`}>
-                          {count}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Neat Candidate Cards Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {candidates
-                  .filter(c => {
-                    if (interviewFilter === 'all') return true;
-                    if (interviewFilter === 'In Progress') return c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress';
-                    return c.interviewStatus === interviewFilter;
-                  })
-                  .map((cand) => (
-                    <div
-                      key={cand.id}
-                      className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800/80 hover:border-purple-500/50 transition-all shadow-xl space-y-4 group relative overflow-hidden"
-                    >
-                      {/* Subtle Top Accent Glow based on status */}
-                      <div className={`absolute top-0 left-0 right-0 h-1 ${
-                        cand.interviewStatus === 'In Progress' || cand.interviewStatus === 'Inprogress' ? 'bg-blue-500 animate-pulse' :
-                        cand.interviewStatus === 'Completed' ? 'bg-emerald-500' :
-                        cand.interviewStatus === 'Scheduled' ? 'bg-purple-500' : 'bg-amber-500/50'
-                      }`} />
-
-                      {/* Card Header & Avatar */}
-                      <div className="flex items-start justify-between gap-3 pt-1">
-                        <div className="flex items-center space-x-3.5 overflow-hidden">
-                          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-slate-800 to-slate-900 border border-slate-700/80 flex items-center justify-center font-black text-lg text-white shadow-md shrink-0 group-hover:scale-105 transition-transform">
-                            {cand.name.charAt(0)}
-                          </div>
-                          <div className="truncate">
-                            <h3 className="text-sm font-extrabold text-white truncate group-hover:text-purple-300 transition-colors">{cand.name}</h3>
-                            <p className="text-[11px] text-slate-400 truncate">{cand.email || `${cand.name.toLowerCase().replace(' ', '.')}@email.com`}</p>
-                          </div>
-                        </div>
-
-                        <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase shrink-0 border shadow-sm ${
-                          cand.interviewStatus === 'Scheduled' ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' :
-                          cand.interviewStatus === 'In Progress' || cand.interviewStatus === 'Inprogress' ? 'bg-blue-500/20 text-blue-300 border-blue-500/30 animate-pulse' :
-                          cand.interviewStatus === 'Completed' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
-                          'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                        }`}>
-                          ● {cand.interviewStatus}
-                        </span>
-                      </div>
-
-                      {/* Card Details Box */}
-                      <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800/80 space-y-2.5 text-xs">
-                        <div className="flex items-center justify-between text-slate-300">
-                          <span className="text-slate-400 font-medium shrink-0">💼 Role:</span>
-                          <span className="font-bold text-slate-200 truncate max-w-[170px] text-right">{cand.role || 'AI Engineer'} ({cand.experience || '5+ yrs'})</span>
-                        </div>
-
-                        {(() => {
-                          const sched = formatSchedule(cand.interviewDate);
-                          return (
-                            <>
-                              <div className="flex items-center justify-between text-slate-300 border-t border-slate-900 pt-2.5">
-                                <span className="text-slate-400 font-medium flex items-center gap-1.5 shrink-0">
-                                  <span>📅</span>
-                                  <span>Date:</span>
-                                </span>
-                                <span className="font-mono font-bold text-purple-300 bg-purple-500/10 px-2.5 py-0.5 rounded-lg border border-purple-500/20 text-xs">
-                                  {sched.date}
-                                </span>
-                              </div>
-                              {sched.time && sched.time !== '-' && (
-                                <div className="flex items-center justify-between text-slate-300 border-t border-slate-900/60 pt-2.5">
-                                  <span className="text-slate-400 font-medium flex items-center gap-1.5 shrink-0">
-                                    <span>⏰</span>
-                                    <span>Time:</span>
-                                  </span>
-                                  <span className="font-mono font-bold text-cyan-300 bg-cyan-500/10 px-2.5 py-0.5 rounded-lg border border-cyan-500/20 text-xs">
-                                    {sched.time}
-                                  </span>
-                                </div>
-                              )}
-                            </>
-                          );
-                        })()}
-
-                        <div className="flex items-center justify-between text-slate-300 border-t border-slate-900 pt-2.5">
-                          <span className="text-slate-400 font-medium flex items-center gap-1.5">
-                            <span>🎙️</span>
-                            <span>Interview Mode:</span>
-                          </span>
-                          <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold font-mono border ${
-                            cand.interviewMode?.toLowerCase().includes('manual')
-                              ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                              : 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30'
-                          }`}>
-                            {cand.interviewMode?.toLowerCase().includes('manual') ? 'Manual' : 'AI'}
-                          </span>
-                        </div>
-
-                        {cand.matchScore && (
-                          <div className={`border-t border-slate-900 pt-2.5 ${
-                            cand.interviewStatus === 'Completed'
-                              ? 'grid grid-cols-2 gap-2'
-                              : 'flex items-center justify-between text-slate-300'
-                          }`}>
-                            {cand.interviewStatus === 'Completed' ? (
-                              <>
-                                <div className="flex flex-col items-start gap-1 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
-                                  <span className="text-slate-400 font-medium text-[11px] flex items-center gap-1">
-                                    <span>⭐</span>
-                                    <span>Resume Rank:</span>
-                                  </span>
-                                  <span className="font-mono font-extrabold text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20 text-xs w-full text-center">
-                                    {cand.matchScore}% Match
-                                  </span>
-                                </div>
-
-                                <div className="flex flex-col items-start gap-1 bg-slate-900/60 p-2.5 rounded-xl border border-purple-500/30 shadow-sm shadow-purple-500/10">
-                                  <span className="text-slate-400 font-medium text-[11px] flex items-center gap-1">
-                                    <span>🏆</span>
-                                    <span>Interview Rank:</span>
-                                  </span>
-                                  <span className="font-mono font-extrabold text-purple-300 bg-purple-500/15 px-2 py-1 rounded-lg border border-purple-500/30 text-xs w-full text-center">
-                                    {cand.evaluationDetails?.overall ? `${cand.evaluationDetails.overall}% Score` : `#${cand.ranking || 1} Rank`}
-                                  </span>
-                                </div>
-                              </>
-                            ) : (
-                              <>
-                                <span className="text-slate-400 font-medium flex items-center gap-1.5">
-                                  <span>⭐</span>
-                                  <span>Resume Rank:</span>
-                                </span>
-                                <span className="font-mono font-extrabold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-lg border border-emerald-500/20">
-                                  {cand.matchScore}% Match
-                                </span>
-                              </>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-
-                {candidates.filter(c => {
-                  if (interviewFilter === 'all') return true;
-                  if (interviewFilter === 'In Progress') return c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress';
-                  return c.interviewStatus === interviewFilter;
-                }).length === 0 && (
-                  <div className="col-span-full py-16 text-center text-slate-400 font-medium bg-slate-950/40 rounded-3xl border border-dashed border-slate-800">
-                    No candidates found in <span className="font-bold text-purple-300">"{interviewFilter}"</span> interview status.
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* VIEW: DEDICATED CALENDAR SCREEN (Simple, Clean Two-Column Layout) */}
-          {activeTab === 'calendar' && (
-            <div className="space-y-6 animate-in fade-in duration-200">
-              {/* Top Header Bar */}
-              <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800/80 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex items-center space-x-3">
-                  <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-purple-600/30 shrink-0">
-                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-extrabold text-white flex items-center space-x-2">
-                      <span>Interview Schedule Calendar</span>
-                      <span className="text-xs font-mono font-normal px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                        July 2026
-                      </span>
-                    </h2>
-                    <p className="text-xs text-slate-400 mt-0.5">Click any date on the calendar to filter session details.</p>
-                  </div>
-                </div>
-
-                {/* Status Filter Buttons */}
-                <div className="flex flex-wrap items-center gap-1.5 bg-slate-950/60 p-1 rounded-2xl border border-slate-800">
-                  {(['all', 'Scheduled', 'In Progress', 'Completed'] as const).map((filter) => {
-                    const count = filter === 'all'
-                      ? candidates.filter(c => c.interviewDate).length
-                      : candidates.filter(c => c.interviewDate && (c.interviewStatus === filter || (filter === 'In Progress' && (c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress')))).length;
-
-                    return (
-                      <button
-                        key={filter}
-                        onClick={() => {
-                          setCalendarFilter(filter);
-                          setSelectedCalendarDay(null);
-                        }}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 ${
-                          calendarFilter === filter
-                            ? 'bg-purple-600 text-white shadow-md'
-                            : 'text-slate-400 hover:text-white hover:bg-slate-900'
-                        }`}
-                      >
-                        <span>{filter === 'all' ? 'All' : filter}</span>
-                        <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${
-                          calendarFilter === filter ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
-                        }`}>
-                          {count}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Main Two-Column Layout (Calendar Grid left, Selected Sessions right) */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-                
-                {/* Left Panel: Clean Simple Month Grid (2 columns on large screens) */}
-                <div className="lg:col-span-2 p-6 rounded-3xl bg-slate-900/80 border border-slate-800/80 shadow-xl space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                    <h3 className="text-sm font-extrabold text-white uppercase tracking-wider flex items-center space-x-2">
-                      <span>July 2026</span>
-                      {selectedCalendarDay !== null && (
-                        <button
-                          onClick={() => setSelectedCalendarDay(null)}
-                          className="text-[11px] font-normal text-purple-400 hover:text-purple-300 underline lowercase cursor-pointer"
-                        >
-                          (clear selection)
-                        </button>
-                      )}
-                    </h3>
-                    <div className="flex items-center space-x-3 text-xs text-slate-400">
-                      <span className="flex items-center space-x-1"><span className="w-2 h-2 rounded-full bg-purple-400 inline-block" /><span>Scheduled</span></span>
-                      <span className="flex items-center space-x-1"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" /><span>In Progress</span></span>
-                      <span className="flex items-center space-x-1"><span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" /><span>Completed</span></span>
-                    </div>
-                  </div>
-
-                  {/* Days of Week Header */}
-                  <div className="grid grid-cols-7 gap-2 text-center">
-                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((dayName) => (
-                      <div key={dayName} className="py-1.5 text-[11px] font-extrabold text-slate-500 uppercase">
-                        {dayName}
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Clean 31-Day Grid */}
-                  <div className="grid grid-cols-7 gap-2">
-                    {/* July 1st 2026 starts Wednesday -> 3 blank squares */}
-                    <div className="min-h-[85px] rounded-2xl bg-slate-950/20 border border-slate-900/40" />
-                    <div className="min-h-[85px] rounded-2xl bg-slate-950/20 border border-slate-900/40" />
-                    <div className="min-h-[85px] rounded-2xl bg-slate-950/20 border border-slate-900/40" />
-
-                    {Array.from({ length: 31 }, (_, i) => i + 1).map((dayNum) => {
-                      const isPast = dayNum < 10;
-                      const isToday = dayNum === 10;
-                      const dayStr = `July ${dayNum < 10 ? '0' + dayNum : dayNum}`;
-                      const dayCandidates = isPast ? [] : candidates.filter((c) => {
-                        if (!c.interviewDate || !c.interviewDate.includes(dayStr)) return false;
-                        if (calendarFilter === 'all') return true;
-                        if (calendarFilter === 'In Progress') return c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress';
-                        return c.interviewStatus === calendarFilter;
-                      });
-                      const hasSessions = dayCandidates.length > 0;
-                      const isSelected = selectedCalendarDay === dayNum;
-
-                      return (
-                        <div
-                          key={dayNum}
-                          onClick={() => !isPast && setSelectedCalendarDay(isSelected ? null : dayNum)}
-                          className={`min-h-[85px] p-2.5 rounded-2xl transition-all flex flex-col justify-between border ${
-                            isPast
-                              ? 'bg-slate-950/20 border-slate-900/40 opacity-40 pointer-events-none'
-                              : isSelected
-                              ? 'bg-purple-950/50 border-purple-500 ring-2 ring-purple-500/40 shadow-lg cursor-pointer'
-                              : isToday
-                              ? 'bg-slate-900 hover:bg-slate-850 border-emerald-500/60 ring-1 ring-emerald-500/30 shadow cursor-pointer'
-                              : hasSessions
-                              ? 'bg-slate-900 hover:bg-slate-850 border-purple-500/40 shadow cursor-pointer'
-                              : 'bg-slate-950/40 hover:bg-slate-900/60 border-slate-800/60 cursor-pointer'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className={`text-xs font-bold flex items-center ${
-                              isSelected ? 'text-purple-300' : isToday ? 'text-emerald-400' : hasSessions ? 'text-white' : 'text-slate-500'
-                            }`}>
-                              <span>{dayNum}</span>
-                              {isToday && <span className="text-[9px] font-black text-emerald-300 ml-1">(Today)</span>}
-                            </span>
-                            {hasSessions && (
-                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isToday ? 'bg-emerald-400 animate-pulse' : 'bg-purple-400'}`} />
-                            )}
-                          </div>
-
-                          {/* Clean Minimal Badge instead of noisy scrolling pills */}
-                          {hasSessions ? (
-                            <div className="mt-1">
-                              <span className={`block px-2 py-1 rounded-lg border text-[10px] font-bold text-center font-mono truncate ${
-                                isToday
-                                  ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-200'
-                                  : 'bg-purple-500/20 border-purple-500/30 text-purple-200'
-                              }`}>
-                                {dayCandidates.length} {dayCandidates.length === 1 ? 'Session' : 'Sessions'}
-                              </span>
-                            </div>
-                          ) : (
-                            <div className="text-[10px] text-slate-600 font-mono text-center">--</div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Right Panel: Selected Day Session Details List */}
-                <div className="lg:col-span-1 p-6 rounded-3xl bg-slate-900/80 border border-slate-800/80 shadow-xl space-y-4">
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                    <div>
-                      <h3 className="text-sm font-extrabold text-white uppercase tracking-wider">
-                        {selectedCalendarDay !== null ? `July ${selectedCalendarDay}, 2026` : 'Today & Upcoming (July 10+)'}
-                      </h3>
-                      <p className="text-[11px] text-slate-400 mt-0.5">
-                        {selectedCalendarDay !== null ? 'Sessions on selected date' : `Showing active & upcoming (${calendarFilter})`}
-                      </p>
-                    </div>
-                    {selectedCalendarDay !== null && (
-                      <button
-                        onClick={() => setSelectedCalendarDay(null)}
-                        className="text-xs px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition-colors cursor-pointer"
-                      >
-                        Show All
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Clean List of Sessions */}
-                  <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
-                    {(() => {
-                      const filteredList = candidates.filter((c) => {
-                        if (!c.interviewDate) return false;
-                        const match = c.interviewDate.match(/July (\d+)/);
-                        if (match) {
-                          const candDay = parseInt(match[1], 10);
-                          if (candDay < 10) return false;
-                        }
-                        if (calendarFilter !== 'all' && c.interviewStatus !== calendarFilter && !(calendarFilter === 'In Progress' && (c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress'))) return false;
-                        if (selectedCalendarDay !== null) {
-                          const dayStr = `July ${selectedCalendarDay < 10 ? '0' + selectedCalendarDay : selectedCalendarDay}`;
-                          return c.interviewDate.includes(dayStr);
-                        }
-                        return true;
-                      });
-
-                      if (filteredList.length === 0) {
-                        return (
-                          <div className="py-12 text-center text-xs text-slate-500 font-medium bg-slate-950/40 rounded-2xl border border-dashed border-slate-800">
-                            No sessions found for {selectedCalendarDay !== null ? `July ${selectedCalendarDay}` : 'this filter'}.
-                          </div>
-                        );
-                      }
-
-                      return filteredList.map((c) => (
-                        <div
-                          key={c.id}
-                          className="p-4 rounded-2xl bg-slate-950/90 border border-slate-800 hover:border-purple-500/40 transition-all space-y-3 group shadow-md"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="truncate">
-                              <h4 className="text-xs font-bold text-white group-hover:text-purple-300 transition-colors truncate">{c.name}</h4>
-                              <p className="text-[11px] text-slate-400 truncate mt-0.5">{c.role || 'AI Engineer'}</p>
-                            </div>
-                            <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase shrink-0 border ${
-                              c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress' ? 'bg-blue-500/20 text-blue-300 border-blue-500/30' :
-                              c.interviewStatus === 'Completed' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
-                              'bg-purple-500/20 text-purple-300 border-purple-500/30'
-                            }`}>
-                              {c.interviewStatus}
-                            </span>
-                          </div>
-
-                          <div className="pt-2 border-t border-slate-900 text-[11px] text-slate-300 space-y-1.5">
-                            {(() => {
-                              const sched = formatSchedule(c.interviewDate);
                               return (
-                                <>
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-slate-500 font-medium">📅 Date:</span>
-                                    <span className="font-mono font-bold text-purple-300 text-right">{sched.date}</span>
-                                  </div>
-                                  {sched.time && sched.time !== '-' && (
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-slate-500 font-medium">⏰ Time:</span>
-                                      <span className="font-mono font-bold text-cyan-300 text-right">{sched.time}</span>
-                                    </div>
-                                  )}
-                                </>
+                                <button
+                                  key={status}
+                                  onClick={() => setInterviewFilter(status)}
+                                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-2 border shrink-0 ${interviewFilter === status
+                                    ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-purple-500 shadow-md shadow-purple-600/30'
+                                    : 'bg-slate-950/60 text-slate-400 border-slate-800/80 hover:text-white hover:bg-slate-900'
+                                    }`}
+                                >
+                                  <span>{status === 'all' ? 'All Candidates' : status}</span>
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-black ${interviewFilter === status ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
+                                    }`}>
+                                    {count}
+                                  </span>
+                                </button>
                               );
-                            })()}
-                            <div className="flex items-center justify-between">
-                              <span className="text-slate-500 font-medium">🎙️ Interview Mode:</span>
-                              <span className="font-mono font-bold text-indigo-300">{c.interviewMode?.toLowerCase().includes('manual') ? 'Manual' : 'AI'}</span>
-                            </div>
-                            {c.matchScore && (
-                              <div className={`pt-1 border-t border-slate-900/60 ${c.interviewStatus === 'Completed' ? 'grid grid-cols-2 gap-1.5' : 'flex items-center justify-between'}`}>
-                                {c.interviewStatus === 'Completed' ? (
-                                  <>
-                                    <div className="bg-slate-900/80 p-1.5 rounded-lg border border-slate-800/80 text-center">
-                                      <div className="text-[9px] text-slate-400">⭐ Resume Rank</div>
-                                      <div className="font-mono font-bold text-emerald-400 text-xs mt-0.5">{c.matchScore}%</div>
-                                    </div>
-                                    <div className="bg-purple-950/40 p-1.5 rounded-lg border border-purple-500/30 text-center">
-                                      <div className="text-[9px] text-slate-400">🏆 Interview Rank</div>
-                                      <div className="font-mono font-bold text-purple-300 text-xs mt-0.5">{c.evaluationDetails?.overall ? `${c.evaluationDetails.overall}%` : `#${c.ranking || 1}`}</div>
-                                    </div>
-                                  </>
-                                ) : (
-                                  <>
-                                    <span className="text-slate-500 font-medium">⭐ Resume Rank:</span>
-                                    <span className="text-emerald-400 font-mono font-bold">{c.matchScore}% Match</span>
-                                  </>
-                                )}
-                              </div>
-                            )}
-                          </div>
-
-                          <button
-                            onClick={() => setActiveTab('interviews')}
-                            className="w-full py-1.5 rounded-xl bg-slate-900 hover:bg-purple-600 hover:text-white text-slate-300 text-xs font-semibold transition-all cursor-pointer flex items-center justify-center space-x-1 mt-1 border border-slate-800"
-                          >
-                            <span>Open Candidate Card</span>
-                            <span>→</span>
-                          </button>
-                        </div>
-                      ));
-                    })()}
-                  </div>
-                </div>
-
-              </div>
-            </div>
-          )}
-
-          {/* VIEW 5: QUESTIONNAIRE BASED ON JD */}
-          {/* VIEW 5: QUESTIONNAIRE BASED ON JD */}
-          {/* VIEW 5: QUESTIONNAIRE BASED ON JD */}
-          {activeTab === 'questionnaire' && (
-            <div className="space-y-6 animate-in fade-in duration-200">
-              {/* Clean Top Header Container */}
-              <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800/80 shadow-xl space-y-5">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div>
-                    <h2 className="text-xl font-extrabold text-white flex items-center space-x-2">
-                      <span>JD Questionnaire & Interview Rubric Studio</span>
-                      <span className="w-2 h-2 rounded-full bg-pink-500 animate-pulse" />
-                    </h2>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Tailored interview questions synthesized by the autonomous Interview Agent from <span className="text-slate-300 font-medium">{jobTitle}</span>.
-                    </p>
-                  </div>
-                  <span className="px-3.5 py-1.5 rounded-full bg-slate-950 border border-slate-800 text-xs font-bold text-slate-300 shrink-0">
-                    <span className="text-pink-400 font-mono mr-1">{questions.length}</span> Total Questions
-                  </span>
-                </div>
-
-                {/* Simple Category Filter Tabs */}
-                <div className="flex items-center gap-1.5 overflow-x-auto pt-2 border-t border-slate-800/80">
-                  {(['all', 'Technical / Core Stack', 'System Architecture', 'Behavioral & Leadership', 'Scenario & Problem Solving'] as const).map((cat) => {
-                    const count = cat === 'all'
-                      ? questions.length
-                      : questions.filter(q => q.category === cat).length;
-
-                    return (
-                      <button
-                        key={cat}
-                        type="button"
-                        onClick={() => setQuestionFilter(cat)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center space-x-1.5 shrink-0 ${
-                          questionFilter === cat
-                            ? 'bg-pink-500/20 text-pink-300 border border-pink-500/40 font-bold'
-                            : 'bg-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/80 border border-transparent'
-                        }`}
-                      >
-                        <span>{cat === 'all' ? 'All Categories' : cat}</span>
-                        <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${
-                          questionFilter === cat ? 'bg-pink-500/30 text-pink-200 font-bold' : 'bg-slate-800 text-slate-400'
-                        }`}>
-                          {count}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Simple & Neat Quick-Add Question Bar */}
-              <form onSubmit={handleAddQuestion} className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800/80 shadow-md">
-                <div className="flex flex-col md:flex-row items-center gap-3">
-                  <div className="flex items-center space-x-2 shrink-0 self-start md:self-center">
-                    <span className="text-pink-400 font-black text-sm pl-1">+</span>
-                    <span className="text-xs font-bold text-slate-300 whitespace-nowrap">Add Question:</span>
-                  </div>
-
-                  <select
-                    value={newQuestionCat}
-                    onChange={(e) => setNewQuestionCat(e.target.value)}
-                    className="w-full md:w-52 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-xs font-medium focus:outline-none focus:border-pink-500 cursor-pointer shrink-0"
-                  >
-                    <option>Technical / Core Stack</option>
-                    <option>System Architecture</option>
-                    <option>Behavioral & Leadership</option>
-                    <option>Scenario & Problem Solving</option>
-                  </select>
-
-                  <input
-                    type="text"
-                    required
-                    value={newQuestionText}
-                    onChange={(e) => setNewQuestionText(e.target.value)}
-                    placeholder="Type custom question or evaluation criteria here..."
-                    className="w-full px-4 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-pink-500 placeholder-slate-500"
-                  />
-
-                  <button
-                    type="submit"
-                    className="w-full md:w-auto px-5 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-bold text-xs shadow-md shrink-0 cursor-pointer transition-all active:scale-95"
-                  >
-                    Add
-                  </button>
-                </div>
-              </form>
-
-              {/* Clean, Neat Single-Column Question Cards List */}
-              <div className="space-y-3">
-                {questions
-                  .filter(q => questionFilter === 'all' ? true : q.category === questionFilter)
-                  .map((q) => (
-                    <div
-                      key={q.id}
-                      className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/60 hover:border-slate-700/80 transition-all shadow-sm flex flex-col sm:flex-row sm:items-start justify-between gap-4 group"
-                    >
-                      <div className="space-y-2.5 flex-1">
-                        <div className="flex items-center space-x-2.5">
-                          <span className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold border ${
-                            q.category === 'Technical / Core Stack' ? 'bg-purple-500/15 text-purple-300 border-purple-500/25' :
-                            q.category === 'System Architecture' ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/25' :
-                            q.category === 'Behavioral & Leadership' ? 'bg-pink-500/15 text-pink-300 border-pink-500/25' :
-                            'bg-amber-500/15 text-amber-300 border-amber-500/25'
-                          }`}>
-                            {q.category}
-                          </span>
-                          <span className="text-xs font-mono font-semibold text-slate-500">Q#{q.id}</span>
-                        </div>
-
-                        <p className="text-sm font-semibold text-slate-100 leading-relaxed">
-                          &ldquo;{q.question}&rdquo;
-                        </p>
-
-                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                          <span className="text-[11px] text-slate-500 font-medium mr-1">Target Skills:</span>
-                          {q.targetSkills.map((s, i) => (
-                            <span key={i} className="px-2 py-0.5 rounded bg-slate-950/80 text-[11px] font-medium text-slate-300 border border-slate-800/80">
-                              ✓ {s}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="flex sm:flex-col items-end justify-between sm:justify-start shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => setQuestions(prev => prev.filter(item => item.id !== q.id))}
-                          className="px-3 py-1.5 rounded-lg bg-transparent hover:bg-red-500/15 text-slate-500 hover:text-red-400 text-xs font-medium transition-all cursor-pointer flex items-center space-x-1"
-                          title="Delete question"
-                        >
-                          <span>Delete</span>
-                          <span>🗑</span>
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-
-                {questions.filter(q => questionFilter === 'all' ? true : q.category === questionFilter).length === 0 && (
-                  <div className="py-12 text-center text-slate-400 text-xs font-medium bg-slate-900/40 rounded-2xl border border-dashed border-slate-800">
-                    No questions found in <span className="font-bold text-pink-400">"{questionFilter}"</span> category.
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* VIEW 6: APPROVALS / REJECTED (HITL Queue Kanban Board matching exact image UI) */}
-          {activeTab === 'approvals' && (
-            <div className="space-y-6">
-              <div className="p-8 rounded-3xl bg-slate-900/80 border border-slate-800/80 shadow-2xl space-y-6">
-                {/* Header Title Box (Row 1) */}
-                <div className="flex flex-col space-y-1.5 pb-4 border-b border-slate-800/80">
-                  <h2 className="text-2xl font-extrabold text-white flex items-center space-x-2.5">
-                    <span className="w-3 h-3 rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 animate-pulse" />
-                    <span>Recruitment Pipeline & HITL Board</span>
-                  </h2>
-                  <p className="text-xs text-slate-400 max-w-3xl">
-                    Drag and drop candidate cards across stages to update pipeline status, or click any card to inspect full AI evaluation scores and interview details.
-                  </p>
-                </div>
-
-                {/* Action Bar & Total Count (Row 2) */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
-                  <div className="flex items-center space-x-2 bg-slate-950/80 px-4 py-2 rounded-2xl border border-slate-800/80 shadow-inner">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                    <span className="text-xs font-bold text-slate-300">
-                      Active Candidate Pool: <strong className="text-indigo-400 font-mono text-sm ml-1">{candidates.length}</strong> Profiles
-                    </span>
-                  </div>
-                </div>
-
-                {/* 5-Column Kanban Grid: Candidates + Scheduled + Review + Approved + Rejected */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-start pb-4">
-                  {[
-                    { id: 'Applied' as CandidateStatus, title: 'Candidates', subtitle: 'Applied Pool', borderTop: 'border-t-4 border-t-purple-500', headerBg: 'bg-slate-900', pillColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30' },
-                    { id: 'Pending HR Review' as CandidateStatus, title: 'Scheduled', subtitle: 'Schedule & Review', borderTop: 'border-t-4 border-t-indigo-500', headerBg: 'bg-slate-900', pillColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' },
-                    { id: 'Hold' as CandidateStatus, title: 'Review', subtitle: 'Ongoing / Hold', borderTop: 'border-t-4 border-t-pink-500', headerBg: 'bg-slate-900', pillColor: 'bg-pink-500/20 text-pink-300 border-pink-500/30' },
-                    { id: 'Offer Sent' as CandidateStatus, title: 'Approved', subtitle: 'Hired Board', borderTop: 'border-t-4 border-t-emerald-500', headerBg: 'bg-slate-900', pillColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' },
-                    { id: 'Rejected' as CandidateStatus, title: 'Rejected', subtitle: 'Archived Board', borderTop: 'border-t-4 border-t-blue-500', headerBg: 'bg-slate-900', pillColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30' }
-                  ].map((col) => {
-                    const colCards = candidates.filter(c => c.status === col.id);
-                    const isDragOver = dragOverCol === col.id;
-
-                    return (
-                      <div
-                        key={col.id}
-                        onDragOver={(e) => handleDragOver(e, col.id)}
-                        onDragLeave={() => setDragOverCol(null)}
-                        onDrop={(e) => handleDropCard(e, col.id)}
-                        className={`rounded-2xl bg-slate-950/80 border ${
-                          isDragOver ? 'border-2 border-indigo-500 shadow-2xl shadow-indigo-500/20 bg-slate-900/80' : 'border-slate-800/80'
-                        } transition-all flex flex-col min-h-[540px] overflow-hidden`}
-                      >
-                        {/* Column Header */}
-                        <div className={`p-4 ${col.headerBg} ${col.borderTop} border-b border-slate-800 flex items-center justify-between`}>
-                          <div className="flex items-center space-x-2">
-                            <h3 className="text-sm font-bold text-white tracking-wide">{col.title}</h3>
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${col.pillColor}`}>
-                              {colCards.length}
-                            </span>
-                            <div>
-                              <h4 className="text-base font-bold text-white flex items-center space-x-2">
-                                <span>{cand.name}</span>
-                                {cand.linkedinUrl && (
-                                  <a 
-                                    href={cand.linkedinUrl} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer" 
-                                    className="px-2 py-0.5 rounded-full bg-[#0A66C2]/10 text-[#0A66C2] text-[10px] font-bold hover:bg-[#0A66C2]/20 transition-colors flex items-center space-x-1 border border-[#0A66C2]/30"
-                                  >
-                                    <span>Connect</span>
-                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                    </svg>
-                                  </a>
-                                )}
-                              </h4>
-                              <div className="flex items-center space-x-4 text-xs text-slate-400 mt-0.5">
-                                <span>Experience: <strong className="text-slate-200">{cand.experience}</strong></span>
-                                <span>•</span>
-                                <span>Salary Req: <strong className="text-slate-200">{cand.salary}</strong></span>
-                              </div>
-                            </div>
+                            })}
                           </div>
                         </div>
 
-                        {/* Column Cards Container */}
-                        <div className="p-3.5 space-y-3.5 flex-1 overflow-y-auto max-h-[640px] custom-scrollbar">
-                          {colCards.length === 0 ? (
-                            <div className="h-44 border-2 border-dashed border-slate-800/60 rounded-2xl flex flex-col items-center justify-center text-center p-4">
-                              <p className="text-xs font-semibold text-slate-500">No cards in {col.title}</p>
-                              <p className="text-[10px] text-slate-600 mt-1">Drag & drop cards here to update pipeline status</p>
-                            </div>
-                          ) : (
-                            colCards.map((cand) => (
+                        {/* Neat Candidate Cards Grid */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                          {candidates
+                            .filter(c => {
+                              if (interviewFilter === 'all') return true;
+                              if (interviewFilter === 'In Progress') return c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress';
+                              return c.interviewStatus === interviewFilter;
+                            })
+                            .map((cand) => (
                               <div
                                 key={cand.id}
-                                draggable
-                                onDragStart={(e) => handleDragStart(e, cand.id)}
-                                onDragEnd={() => setDraggedCandId(null)}
-                                className={`p-4 rounded-2xl bg-slate-900/90 border ${
-                                  draggedCandId === cand.id ? 'opacity-40 border-dashed border-indigo-500 scale-95' : 'border-slate-800 hover:border-slate-700 shadow-lg hover:shadow-xl'
-                                } transition-all cursor-grab active:cursor-grabbing group space-y-3 relative`}
+                                className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800/80 hover:border-purple-500/50 transition-all shadow-xl space-y-4 group relative overflow-hidden"
                               >
-                                {/* Top Header: Candidate Name, Role & Score below role */}
-                                <div className="space-y-2 border-b border-slate-800/80 pb-3">
-                                  <div>
-                                    <h4 className="text-xs font-bold text-white group-hover:text-indigo-300 transition-colors">
-                                      {cand.name}
-                                    </h4>
-                                    <p className="text-[10px] text-slate-400 mt-0.5 font-medium">{cand.role || 'AI Backend Engineer'}</p>
+                                {/* Subtle Top Accent Glow based on status */}
+                                <div className={`absolute top-0 left-0 right-0 h-1 ${cand.interviewStatus === 'In Progress' || cand.interviewStatus === 'Inprogress' ? 'bg-blue-500 animate-pulse' :
+                                  cand.interviewStatus === 'Completed' ? 'bg-emerald-500' :
+                                    cand.interviewStatus === 'Scheduled' ? 'bg-purple-500' : 'bg-amber-500/50'
+                                  }`} />
+
+                                {/* Card Header & Avatar */}
+                                <div className="flex items-start justify-between gap-3 pt-1">
+                                  <div className="flex items-center space-x-3.5 overflow-hidden">
+                                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-slate-800 to-slate-900 border border-slate-700/80 flex items-center justify-center font-black text-lg text-white shadow-md shrink-0 group-hover:scale-105 transition-transform">
+                                      {cand.name.charAt(0)}
+                                    </div>
+                                    <div className="truncate">
+                                      <h3 className="text-sm font-extrabold text-white truncate group-hover:text-purple-300 transition-colors">{cand.name}</h3>
+                                      <p className="text-[11px] text-slate-400 truncate">{cand.email || `${cand.name.toLowerCase().replace(' ', '.')}@email.com`}</p>
+                                    </div>
                                   </div>
 
-                                  {/* Score displayed right below the role */}
-                                  <div className="pt-0.5">
-                                    {cand.status === 'Applied' || cand.status === 'Pending HR Review' ? (
-                                      <div className="flex items-center justify-between px-2.5 py-1 rounded-lg bg-purple-500/15 border border-purple-500/30 text-[11px] font-bold text-purple-300">
-                                        <span className="text-[10px] font-medium text-purple-300/80">Resume Ranking Score</span>
-                                        <span className="font-mono font-extrabold">{cand.matchScore}%</span>
-                                      </div>
-                                    ) : (
-                                      <div className="flex items-center justify-between px-2.5 py-1 rounded-lg bg-indigo-500/15 border border-indigo-500/30 text-[11px] font-bold text-indigo-300">
-                                        <span className="text-[10px] font-medium text-indigo-300/80">Interview Score</span>
-                                        <span className="font-mono font-extrabold">{cand.evaluationDetails?.overall || cand.matchScore}%</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-
-                                {/* Skills / Role tags */}
-                                <div className="flex flex-wrap gap-1.5">
-                                  <span className="px-2.5 py-1 rounded-lg bg-indigo-500/15 border border-indigo-500/25 text-[10px] font-bold text-indigo-300">
-                                    {cand.skills[0] || 'Variant 1'}
+                                  <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase shrink-0 border shadow-sm ${cand.interviewStatus === 'Scheduled' ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' :
+                                    cand.interviewStatus === 'In Progress' || cand.interviewStatus === 'Inprogress' ? 'bg-blue-500/20 text-blue-300 border-blue-500/30 animate-pulse' :
+                                      cand.interviewStatus === 'Completed' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
+                                        'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                                    }`}>
+                                    ● {cand.interviewStatus}
                                   </span>
-                                  {cand.skills[1] && (
-                                    <span className="px-2 py-0.5 rounded-lg bg-slate-950/80 border border-slate-800/80 text-[10px] text-slate-300 font-medium">
-                                      {cand.skills[1]}
-                                    </span>
-                                  )}
-                                  {cand.skills[2] && (
-                                    <span className="px-2 py-0.5 rounded-lg bg-slate-950/80 border border-slate-800/80 text-[10px] text-slate-400 font-medium">
-                                      {cand.skills[2]}
-                                    </span>
-                                  )}
                                 </div>
 
-                                {/* Years of Experience */}
-                                <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-800/60">
-                                  <span className="text-slate-500 font-medium">Experience</span>
-                                  <span className="text-slate-300 font-semibold">{cand.experience}</span>
+                                {/* Card Details Box */}
+                                <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800/80 space-y-2.5 text-xs">
+                                  <div className="flex items-center justify-between text-slate-300">
+                                    <span className="text-slate-400 font-medium shrink-0">💼 Role:</span>
+                                    <span className="font-bold text-slate-200 truncate max-w-[170px] text-right">{cand.role || 'AI Engineer'} ({cand.experience || '5+ yrs'})</span>
+                                  </div>
+
+                                  {(() => {
+                                    const sched = formatSchedule(cand.interviewDate);
+                                    return (
+                                      <>
+                                        <div className="flex items-center justify-between text-slate-300 border-t border-slate-900 pt-2.5">
+                                          <span className="text-slate-400 font-medium flex items-center gap-1.5 shrink-0">
+                                            <span>📅</span>
+                                            <span>Date:</span>
+                                          </span>
+                                          <span className="font-mono font-bold text-purple-300 bg-purple-500/10 px-2.5 py-0.5 rounded-lg border border-purple-500/20 text-xs">
+                                            {sched.date}
+                                          </span>
+                                        </div>
+                                        {sched.time && sched.time !== '-' && (
+                                          <div className="flex items-center justify-between text-slate-300 border-t border-slate-900/60 pt-2.5">
+                                            <span className="text-slate-400 font-medium flex items-center gap-1.5 shrink-0">
+                                              <span>⏰</span>
+                                              <span>Time:</span>
+                                            </span>
+                                            <span className="font-mono font-bold text-cyan-300 bg-cyan-500/10 px-2.5 py-0.5 rounded-lg border border-cyan-500/20 text-xs">
+                                              {sched.time}
+                                            </span>
+                                          </div>
+                                        )}
+                                      </>
+                                    );
+                                  })()}
+
+                                  <div className="flex items-center justify-between text-slate-300 border-t border-slate-900 pt-2.5">
+                                    <span className="text-slate-400 font-medium flex items-center gap-1.5">
+                                      <span>🎙️</span>
+                                      <span>Interview Mode:</span>
+                                    </span>
+                                    <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold font-mono border ${cand.interviewMode?.toLowerCase().includes('manual')
+                                      ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                                      : 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30'
+                                      }`}>
+                                      {cand.interviewMode?.toLowerCase().includes('manual') ? 'Manual' : 'AI'}
+                                    </span>
+                                  </div>
+
+                                  {cand.matchScore && (
+                                    <div className={`border-t border-slate-900 pt-2.5 ${cand.interviewStatus === 'Completed'
+                                      ? 'grid grid-cols-2 gap-2'
+                                      : 'flex items-center justify-between text-slate-300'
+                                      }`}>
+                                      {cand.interviewStatus === 'Completed' ? (
+                                        <>
+                                          <div className="flex flex-col items-start gap-1 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+                                            <span className="text-slate-400 font-medium text-[11px] flex items-center gap-1">
+                                              <span>⭐</span>
+                                              <span>Resume Rank:</span>
+                                            </span>
+                                            <span className="font-mono font-extrabold text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20 text-xs w-full text-center">
+                                              {cand.matchScore}% Match
+                                            </span>
+                                          </div>
+
+                                          <div className="flex flex-col items-start gap-1 bg-slate-900/60 p-2.5 rounded-xl border border-purple-500/30 shadow-sm shadow-purple-500/10">
+                                            <span className="text-slate-400 font-medium text-[11px] flex items-center gap-1">
+                                              <span>🏆</span>
+                                              <span>Interview Rank:</span>
+                                            </span>
+                                            <span className="font-mono font-extrabold text-purple-300 bg-purple-500/15 px-2 py-1 rounded-lg border border-purple-500/30 text-xs w-full text-center">
+                                              {cand.evaluationDetails?.overall ? `${cand.evaluationDetails.overall}% Score` : `#${cand.ranking || 1} Rank`}
+                                            </span>
+                                          </div>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <span className="text-slate-400 font-medium flex items-center gap-1.5">
+                                            <span>⭐</span>
+                                            <span>Resume Rank:</span>
+                                          </span>
+                                          <span className="font-mono font-extrabold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-lg border border-emerald-500/20">
+                                            {cand.matchScore}% Match
+                                          </span>
+                                        </>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
-                            ))
-                          )}
+                            ))}
+
+                          {candidates.filter(c => {
+                            if (interviewFilter === 'all') return true;
+                            if (interviewFilter === 'In Progress') return c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress';
+                            return c.interviewStatus === interviewFilter;
+                          }).length === 0 && (
+                              <div className="col-span-full py-16 text-center text-slate-400 font-medium bg-slate-950/40 rounded-3xl border border-dashed border-slate-800">
+                                No candidates found in <span className="font-bold text-purple-300">"{interviewFilter}"</span> interview status.
+                              </div>
+                            )}
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-
-                {/* Modal for Manual + Agent Card Creation */}
-                {showAddCardModal && (
-                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-150">
-                    <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-5">
-                      <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-                        <div>
-                          <h3 className="text-base font-bold text-white flex items-center space-x-2">
-                            <span>+ Add Card to Kanban Board</span>
-                          </h3>
-                          <p className="text-xs text-slate-400 mt-0.5">Adding to column: <strong className="text-indigo-400">{showAddCardModal}</strong></p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setShowAddCardModal(null)}
-                          className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center font-bold cursor-pointer"
-                        >
-                          ×
-                        </button>
-                      </div>
-
-                      <form onSubmit={handleCreateCard} className="space-y-4">
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-semibold text-slate-300">Candidate Full Name *</label>
-                          <input
-                            type="text"
-                            required
-                            value={newCardName}
-                            onChange={(e) => setNewCardName(e.target.value)}
-                            placeholder="e.g. James Smith"
-                            className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-1.5">
-                            <label className="text-xs font-semibold text-slate-300">Email Address</label>
-                            <input
-                              type="email"
-                              value={newCardEmail}
-                              onChange={(e) => setNewCardEmail(e.target.value)}
-                              placeholder="james@example.com"
-                              className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                            />
-                          </div>
-                          <div className="space-y-1.5">
-                            <label className="text-xs font-semibold text-slate-300">Match Score (0-100)</label>
-                            <input
-                              type="number"
-                              min={0}
-                              max={100}
-                              value={newCardScore}
-                              onChange={(e) => setNewCardScore(e.target.value)}
-                              className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-semibold text-slate-300">Skills / Variant Tags (comma separated)</label>
-                          <input
-                            type="text"
-                            value={newCardSkills}
-                            onChange={(e) => setNewCardSkills(e.target.value)}
-                            placeholder="Variant 1, Python, LangGraph"
-                            className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          />
-                        </div>
-
-                        <div className="flex items-center justify-end space-x-3 pt-2 border-t border-slate-800">
-                          <button
-                            type="button"
-                            onClick={() => setShowAddCardModal(null)}
-                            className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs cursor-pointer"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            type="submit"
-                            className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md cursor-pointer"
-                          >
-                            Add Card & Run Agent Check
-                          </button>
-                        </div>
-                      </form>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
           )}
 
-          {/* VIEW 7: SCORE DEFINITION SECTION */}
-          {activeTab === 'score-definition' && (
-            <div className="space-y-6">
-              <div className="p-8 rounded-3xl bg-slate-900/80 border border-slate-800/80 shadow-2xl space-y-6">
-                <div className="border-b border-slate-800 pb-6">
-                  <h2 className="text-2xl font-extrabold text-white flex items-center space-x-2">
-                    <span className="w-3 h-3 rounded-full bg-cyan-500 animate-pulse" />
-                    <span>Candidate Assessment & Score Definition Rubric</span>
-                  </h2>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Transparent breakdown of how the **Candidate Assessment Agent** and **Critic Agent** calculate similarity scores and audit evaluations for fairness.
-                  </p>
-                </div>
+                      {/* VIEW: DEDICATED CALENDAR SCREEN (Simple, Clean Two-Column Layout) */}
+                      {activeTab === 'calendar' && (
+                        <div className="space-y-6 animate-in fade-in duration-200">
+                          {/* Top Header Bar */}
+                          <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800/80 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div className="flex items-center space-x-3">
+                              <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-purple-600/30 shrink-0">
+                                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                </svg>
+                              </div>
+                              <div>
+                                <h2 className="text-xl font-extrabold text-white flex items-center space-x-2">
+                                  <span>Interview Schedule Calendar</span>
+                                  <span className="text-xs font-mono font-normal px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                                    July 2026
+                                  </span>
+                                </h2>
+                                <p className="text-xs text-slate-400 mt-0.5">Click any date on the calendar to filter session details.</p>
+                              </div>
+                            </div>
 
-                {saveSuccessMsg && (
-                  <div className="p-4 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <svg className="w-4 h-4 shrink-0 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                      <span>{saveSuccessMsg}</span>
-                    </div>
-                    <button type="button" onClick={() => setSaveSuccessMsg("")} className="text-emerald-400 hover:text-white cursor-pointer font-bold">×</button>
-                  </div>
-                )}
+                            {/* Status Filter Buttons */}
+                            <div className="flex flex-wrap items-center gap-1.5 bg-slate-950/60 p-1 rounded-2xl border border-slate-800">
+                              {(['all', 'Scheduled', 'In Progress', 'Completed'] as const).map((filter) => {
+                                const count = filter === 'all'
+                                  ? candidates.filter(c => c.interviewDate).length
+                                  : candidates.filter(c => c.interviewDate && (c.interviewStatus === filter || (filter === 'In Progress' && (c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress')))).length;
 
-                {/* 5 Weighted Dimensions */}
-                <div className="space-y-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center space-x-2">
-                      <h3 className="text-base font-bold text-white">Multi-Dimensional Similarity Scoring Rubric (100 Max Score)</h3>
-                      <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[10px] font-bold border border-indigo-500/30">
-                        Editable by HR
-                      </span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      {!isEditingWeights ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTempWeights({ ...rubricWeights });
-                            setIsEditingWeights(true);
-                            setSaveSuccessMsg("");
-                          }}
-                          className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs shadow-md shadow-indigo-600/20 transition-all cursor-pointer flex items-center space-x-1.5 active:scale-95"
-                        >
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                          </svg>
-                          <span>Customize Weightage</span>
-                        </button>
-                      ) : (
-                        <div className="flex items-center space-x-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setTempWeights({
-                                technical: 45,
-                                experience: 25,
-                                education: 10,
-                                compensation: 10,
-                                locationNotice: 10
-                              });
-                            }}
-                            className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-all cursor-pointer"
-                          >
-                            Reset Defaults
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setIsEditingWeights(false)}
-                            className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white font-semibold text-xs border border-slate-800 transition-all cursor-pointer"
-                          >
-                            Cancel
-                          </button>
+                                return (
+                                  <button
+                                    key={filter}
+                                    onClick={() => {
+                                      setCalendarFilter(filter);
+                                      setSelectedCalendarDay(null);
+                                    }}
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5 ${calendarFilter === filter
+                                      ? 'bg-purple-600 text-white shadow-md'
+                                      : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                                      }`}
+                                  >
+                                    <span>{filter === 'all' ? 'All' : filter}</span>
+                                    <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${calendarFilter === filter ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
+                                      }`}>
+                                      {count}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Main Two-Column Layout (Calendar Grid left, Selected Sessions right) */}
+                          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+
+                            {/* Left Panel: Clean Simple Month Grid (2 columns on large screens) */}
+                            <div className="lg:col-span-2 p-6 rounded-3xl bg-slate-900/80 border border-slate-800/80 shadow-xl space-y-4">
+                              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                                <h3 className="text-sm font-extrabold text-white uppercase tracking-wider flex items-center space-x-2">
+                                  <span>July 2026</span>
+                                  {selectedCalendarDay !== null && (
+                                    <button
+                                      onClick={() => setSelectedCalendarDay(null)}
+                                      className="text-[11px] font-normal text-purple-400 hover:text-purple-300 underline lowercase cursor-pointer"
+                                    >
+                                      (clear selection)
+                                    </button>
+                                  )}
+                                </h3>
+                                <div className="flex items-center space-x-3 text-xs text-slate-400">
+                                  <span className="flex items-center space-x-1"><span className="w-2 h-2 rounded-full bg-purple-400 inline-block" /><span>Scheduled</span></span>
+                                  <span className="flex items-center space-x-1"><span className="w-2 h-2 rounded-full bg-blue-400 inline-block" /><span>In Progress</span></span>
+                                  <span className="flex items-center space-x-1"><span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" /><span>Completed</span></span>
+                                </div>
+                              </div>
+
+                              {/* Days of Week Header */}
+                              <div className="grid grid-cols-7 gap-2 text-center">
+                                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((dayName) => (
+                                  <div key={dayName} className="py-1.5 text-[11px] font-extrabold text-slate-500 uppercase">
+                                    {dayName}
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Clean 31-Day Grid */}
+                              <div className="grid grid-cols-7 gap-2">
+                                {/* July 1st 2026 starts Wednesday -> 3 blank squares */}
+                                <div className="min-h-[85px] rounded-2xl bg-slate-950/20 border border-slate-900/40" />
+                                <div className="min-h-[85px] rounded-2xl bg-slate-950/20 border border-slate-900/40" />
+                                <div className="min-h-[85px] rounded-2xl bg-slate-950/20 border border-slate-900/40" />
+
+                                {Array.from({ length: 31 }, (_, i) => i + 1).map((dayNum) => {
+                                  const isPast = dayNum < 10;
+                                  const isToday = dayNum === 10;
+                                  const dayStr = `July ${dayNum < 10 ? '0' + dayNum : dayNum}`;
+                                  const dayCandidates = isPast ? [] : candidates.filter((c) => {
+                                    if (!c.interviewDate || !c.interviewDate.includes(dayStr)) return false;
+                                    if (calendarFilter === 'all') return true;
+                                    if (calendarFilter === 'In Progress') return c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress';
+                                    return c.interviewStatus === calendarFilter;
+                                  });
+                                  const hasSessions = dayCandidates.length > 0;
+                                  const isSelected = selectedCalendarDay === dayNum;
+
+                                  return (
+                                    <div
+                                      key={dayNum}
+                                      onClick={() => !isPast && setSelectedCalendarDay(isSelected ? null : dayNum)}
+                                      className={`min-h-[85px] p-2.5 rounded-2xl transition-all flex flex-col justify-between border ${isPast
+                                        ? 'bg-slate-950/20 border-slate-900/40 opacity-40 pointer-events-none'
+                                        : isSelected
+                                          ? 'bg-purple-950/50 border-purple-500 ring-2 ring-purple-500/40 shadow-lg cursor-pointer'
+                                          : isToday
+                                            ? 'bg-slate-900 hover:bg-slate-850 border-emerald-500/60 ring-1 ring-emerald-500/30 shadow cursor-pointer'
+                                            : hasSessions
+                                              ? 'bg-slate-900 hover:bg-slate-850 border-purple-500/40 shadow cursor-pointer'
+                                              : 'bg-slate-950/40 hover:bg-slate-900/60 border-slate-800/60 cursor-pointer'
+                                        }`}
+                                    >
+                                      <div className="flex items-center justify-between">
+                                        <span className={`text-xs font-bold flex items-center ${isSelected ? 'text-purple-300' : isToday ? 'text-emerald-400' : hasSessions ? 'text-white' : 'text-slate-500'
+                                          }`}>
+                                          <span>{dayNum}</span>
+                                          {isToday && <span className="text-[9px] font-black text-emerald-300 ml-1">(Today)</span>}
+                                        </span>
+                                        {hasSessions && (
+                                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isToday ? 'bg-emerald-400 animate-pulse' : 'bg-purple-400'}`} />
+                                        )}
+                                      </div>
+
+                                      {/* Clean Minimal Badge instead of noisy scrolling pills */}
+                                      {hasSessions ? (
+                                        <div className="mt-1">
+                                          <span className={`block px-2 py-1 rounded-lg border text-[10px] font-bold text-center font-mono truncate ${isToday
+                                            ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-200'
+                                            : 'bg-purple-500/20 border-purple-500/30 text-purple-200'
+                                            }`}>
+                                            {dayCandidates.length} {dayCandidates.length === 1 ? 'Session' : 'Sessions'}
+                                          </span>
+                                        </div>
+                                      ) : (
+                                        <div className="text-[10px] text-slate-600 font-mono text-center">--</div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            {/* Right Panel: Selected Day Session Details List */}
+                            <div className="lg:col-span-1 p-6 rounded-3xl bg-slate-900/80 border border-slate-800/80 shadow-xl space-y-4">
+                              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                                <div>
+                                  <h3 className="text-sm font-extrabold text-white uppercase tracking-wider">
+                                    {selectedCalendarDay !== null ? `July ${selectedCalendarDay}, 2026` : 'Today & Upcoming (July 10+)'}
+                                  </h3>
+                                  <p className="text-[11px] text-slate-400 mt-0.5">
+                                    {selectedCalendarDay !== null ? 'Sessions on selected date' : `Showing active & upcoming (${calendarFilter})`}
+                                  </p>
+                                </div>
+                                {selectedCalendarDay !== null && (
+                                  <button
+                                    onClick={() => setSelectedCalendarDay(null)}
+                                    className="text-xs px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition-colors cursor-pointer"
+                                  >
+                                    Show All
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Clean List of Sessions */}
+                              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+                                {(() => {
+                                  const filteredList = candidates.filter((c) => {
+                                    if (!c.interviewDate) return false;
+                                    const match = c.interviewDate.match(/July (\d+)/);
+                                    if (match) {
+                                      const candDay = parseInt(match[1], 10);
+                                      if (candDay < 10) return false;
+                                    }
+                                    if (calendarFilter !== 'all' && c.interviewStatus !== calendarFilter && !(calendarFilter === 'In Progress' && (c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress'))) return false;
+                                    if (selectedCalendarDay !== null) {
+                                      const dayStr = `July ${selectedCalendarDay < 10 ? '0' + selectedCalendarDay : selectedCalendarDay}`;
+                                      return c.interviewDate.includes(dayStr);
+                                    }
+                                    return true;
+                                  });
+
+                                  if (filteredList.length === 0) {
+                                    return (
+                                      <div className="py-12 text-center text-xs text-slate-500 font-medium bg-slate-950/40 rounded-2xl border border-dashed border-slate-800">
+                                        No sessions found for {selectedCalendarDay !== null ? `July ${selectedCalendarDay}` : 'this filter'}.
+                                      </div>
+                                    );
+                                  }
+
+                                  return filteredList.map((c) => (
+                                    <div
+                                      key={c.id}
+                                      className="p-4 rounded-2xl bg-slate-950/90 border border-slate-800 hover:border-purple-500/40 transition-all space-y-3 group shadow-md"
+                                    >
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="truncate">
+                                          <h4 className="text-xs font-bold text-white group-hover:text-purple-300 transition-colors truncate">{c.name}</h4>
+                                          <p className="text-[11px] text-slate-400 truncate mt-0.5">{c.role || 'AI Engineer'}</p>
+                                        </div>
+                                        <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase shrink-0 border ${c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress' ? 'bg-blue-500/20 text-blue-300 border-blue-500/30' :
+                                          c.interviewStatus === 'Completed' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' :
+                                            'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                                          }`}>
+                                          {c.interviewStatus}
+                                        </span>
+                                      </div>
+
+                                      <div className="pt-2 border-t border-slate-900 text-[11px] text-slate-300 space-y-1.5">
+                                        {(() => {
+                                          const sched = formatSchedule(c.interviewDate);
+                                          return (
+                                            <>
+                                              <div className="flex items-center justify-between">
+                                                <span className="text-slate-500 font-medium">📅 Date:</span>
+                                                <span className="font-mono font-bold text-purple-300 text-right">{sched.date}</span>
+                                              </div>
+                                              {sched.time && sched.time !== '-' && (
+                                                <div className="flex items-center justify-between">
+                                                  <span className="text-slate-500 font-medium">⏰ Time:</span>
+                                                  <span className="font-mono font-bold text-cyan-300 text-right">{sched.time}</span>
+                                                </div>
+                                              )}
+                                            </>
+                                          );
+                                        })()}
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-slate-500 font-medium">🎙️ Interview Mode:</span>
+                                          <span className="font-mono font-bold text-indigo-300">{c.interviewMode?.toLowerCase().includes('manual') ? 'Manual' : 'AI'}</span>
+                                        </div>
+                                        {c.matchScore && (
+                                          <div className={`pt-1 border-t border-slate-900/60 ${c.interviewStatus === 'Completed' ? 'grid grid-cols-2 gap-1.5' : 'flex items-center justify-between'}`}>
+                                            {c.interviewStatus === 'Completed' ? (
+                                              <>
+                                                <div className="bg-slate-900/80 p-1.5 rounded-lg border border-slate-800/80 text-center">
+                                                  <div className="text-[9px] text-slate-400">⭐ Resume Rank</div>
+                                                  <div className="font-mono font-bold text-emerald-400 text-xs mt-0.5">{c.matchScore}%</div>
+                                                </div>
+                                                <div className="bg-purple-950/40 p-1.5 rounded-lg border border-purple-500/30 text-center">
+                                                  <div className="text-[9px] text-slate-400">🏆 Interview Rank</div>
+                                                  <div className="font-mono font-bold text-purple-300 text-xs mt-0.5">{c.evaluationDetails?.overall ? `${c.evaluationDetails.overall}%` : `#${c.ranking || 1}`}</div>
+                                                </div>
+                                              </>
+                                            ) : (
+                                              <>
+                                                <span className="text-slate-500 font-medium">⭐ Resume Rank:</span>
+                                                <span className="text-emerald-400 font-mono font-bold">{c.matchScore}% Match</span>
+                                              </>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      <button
+                                        onClick={() => setActiveTab('interviews')}
+                                        className="w-full py-1.5 rounded-xl bg-slate-900 hover:bg-purple-600 hover:text-white text-slate-300 text-xs font-semibold transition-all cursor-pointer flex items-center justify-center space-x-1 mt-1 border border-slate-800"
+                                      >
+                                        <span>Open Candidate Card</span>
+                                        <span>→</span>
+                                      </button>
+                                    </div>
+                                  ));
+                                })()}
+                              </div>
+                            </div>
+
+                          </div>
                         </div>
                       )}
-                    </div>
-                  </div>
 
-                  {isEditingWeights ? (
-                    <div className="p-6 rounded-3xl bg-slate-950/80 border border-indigo-500/40 shadow-2xl space-y-6 animate-in fade-in duration-200">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-4">
-                        <div>
-                          <h4 className="text-sm font-bold text-white flex items-center space-x-2">
-                            <span>Adjust Scoring Rubric Weightages</span>
-                            <span className="text-[10px] font-normal text-indigo-400">(Total must equal 100%)</span>
-                          </h4>
-                          <p className="text-xs text-slate-400 mt-0.5">Move sliders or enter custom percentages. Saving will recalculate all candidate match scores.</p>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <span className="text-xs font-semibold text-slate-400">Total Weight:</span>
-                          <span className={`px-3 py-1 rounded-xl text-xs font-black border ${
-                            tempWeights.technical + tempWeights.experience + tempWeights.education + tempWeights.compensation + tempWeights.locationNotice === 100
-                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                              : 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
-                          }`}>
-                            {tempWeights.technical + tempWeights.experience + tempWeights.education + tempWeights.compensation + tempWeights.locationNotice}% / 100%
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Visual Proportional Bar */}
-                      <div className="w-full h-3 rounded-full bg-slate-900 overflow-hidden flex">
-                        <div style={{ width: `${tempWeights.technical}%` }} className="bg-indigo-500 transition-all duration-300" title={`Technical: ${tempWeights.technical}%`} />
-                        <div style={{ width: `${tempWeights.experience}%` }} className="bg-purple-500 transition-all duration-300" title={`Experience: ${tempWeights.experience}%`} />
-                        <div style={{ width: `${tempWeights.education}%` }} className="bg-pink-500 transition-all duration-300" title={`Education: ${tempWeights.education}%`} />
-                        <div style={{ width: `${tempWeights.compensation}%` }} className="bg-emerald-500 transition-all duration-300" title={`Compensation: ${tempWeights.compensation}%`} />
-                        <div style={{ width: `${tempWeights.locationNotice}%` }} className="bg-cyan-500 transition-all duration-300" title={`Location & Notice: ${tempWeights.locationNotice}%`} />
-                      </div>
-
-                      {/* Sliders & Inputs Grid */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {[
-                          { key: 'technical' as const, label: "Technical Skills Match", color: "text-indigo-400 border-indigo-500/30 bg-indigo-500/10", accent: "accent-indigo-500", desc: "Cosine similarity between resume embedding & tech stack." },
-                          { key: 'experience' as const, label: "Experience & Seniority", color: "text-purple-400 border-purple-500/30 bg-purple-500/10", accent: "accent-purple-500", desc: "Industry experience years against job requirements." },
-                          { key: 'education' as const, label: "Education & Certifications", color: "text-pink-400 border-pink-500/30 bg-pink-500/10", accent: "accent-pink-500", desc: "Relevant degrees in CS, AI, or certifications (AWS, CKA)." },
-                          { key: 'compensation' as const, label: "Compensation Alignment", color: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10", accent: "accent-emerald-500", desc: "Alignment with expected salary ($130k - $160k)." },
-                          { key: 'locationNotice' as const, label: "Location & Notice Period", color: "text-cyan-400 border-cyan-500/30 bg-cyan-500/10", accent: "accent-cyan-500", desc: "Timezone compatibility & availability timeline." }
-                        ].map((dim) => (
-                          <div key={dim.key} className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-bold text-white">{dim.label}</span>
-                              <span className={`px-2 py-0.5 rounded text-[11px] font-black border ${dim.color}`}>
-                                {tempWeights[dim.key]}%
+                      {/* VIEW 5: QUESTIONNAIRE BASED ON JD */}
+                      {/* VIEW 5: QUESTIONNAIRE BASED ON JD */}
+                      {/* VIEW 5: QUESTIONNAIRE BASED ON JD */}
+                      {activeTab === 'questionnaire' && (
+                        <div className="space-y-6 animate-in fade-in duration-200">
+                          {/* Clean Top Header Container */}
+                          <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800/80 shadow-xl space-y-5">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                              <div>
+                                <h2 className="text-xl font-extrabold text-white flex items-center space-x-2">
+                                  <span>JD Questionnaire & Interview Rubric Studio</span>
+                                  <span className="w-2 h-2 rounded-full bg-pink-500 animate-pulse" />
+                                </h2>
+                                <p className="text-xs text-slate-400 mt-1">
+                                  Tailored interview questions synthesized by the autonomous Interview Agent from <span className="text-slate-300 font-medium">{jobTitle}</span>.
+                                </p>
+                              </div>
+                              <span className="px-3.5 py-1.5 rounded-full bg-slate-950 border border-slate-800 text-xs font-bold text-slate-300 shrink-0">
+                                <span className="text-pink-400 font-mono mr-1">{questions.length}</span> Total Questions
                               </span>
                             </div>
-                            <p className="text-[11px] text-slate-400 leading-relaxed">{dim.desc}</p>
-                            <div className="flex items-center space-x-3 pt-1">
-                              <input
-                                type="range"
-                                min={0}
-                                max={100}
-                                step={1}
-                                value={tempWeights[dim.key]}
-                                onChange={(e) => {
-                                  const val = parseInt(e.target.value) || 0;
-                                  setTempWeights(prev => ({ ...prev, [dim.key]: val }));
-                                }}
-                                className={`w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer ${dim.accent}`}
-                              />
-                              <input
-                                type="number"
-                                min={0}
-                                max={100}
-                                value={tempWeights[dim.key]}
-                                onChange={(e) => {
-                                  const val = parseInt(e.target.value) || 0;
-                                  setTempWeights(prev => ({ ...prev, [dim.key]: Math.min(100, Math.max(0, val)) }));
-                                }}
-                                className="w-16 px-2 py-1 rounded bg-slate-950 border border-slate-800 text-xs font-mono font-bold text-center text-white focus:outline-none focus:border-indigo-500"
-                              />
+
+                            {/* Simple Category Filter Tabs */}
+                            <div className="flex items-center gap-1.5 overflow-x-auto pt-2 border-t border-slate-800/80">
+                              {(['all', 'Technical / Core Stack', 'System Architecture', 'Behavioral & Leadership', 'Scenario & Problem Solving'] as const).map((cat) => {
+                                const count = cat === 'all'
+                                  ? questions.length
+                                  : questions.filter(q => q.category === cat).length;
+
+                                return (
+                                  <button
+                                    key={cat}
+                                    type="button"
+                                    onClick={() => setQuestionFilter(cat)}
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center space-x-1.5 shrink-0 ${questionFilter === cat
+                                      ? 'bg-pink-500/20 text-pink-300 border border-pink-500/40 font-bold'
+                                      : 'bg-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/80 border border-transparent'
+                                      }`}
+                                  >
+                                    <span>{cat === 'all' ? 'All Categories' : cat}</span>
+                                    <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${questionFilter === cat ? 'bg-pink-500/30 text-pink-200 font-bold' : 'bg-slate-800 text-slate-400'
+                                      }`}>
+                                      {count}
+                                    </span>
+                                  </button>
+                                );
+                              })}
                             </div>
                           </div>
-                        ))}
-                      </div>
 
-                      {/* Action Bar */}
-                      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-800">
-                        {tempWeights.technical + tempWeights.experience + tempWeights.education + tempWeights.compensation + tempWeights.locationNotice === 100 ? (
-                          <div className="flex items-center space-x-2 text-emerald-400 text-xs font-bold">
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                            <span>Total equals 100%. Ready to apply rubric across all candidates.</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center space-x-2 text-amber-400 text-xs font-bold">
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                            </svg>
-                            <span>
-                              Total is {tempWeights.technical + tempWeights.experience + tempWeights.education + tempWeights.compensation + tempWeights.locationNotice}%. Must equal 100% (Adjust by {100 - (tempWeights.technical + tempWeights.experience + tempWeights.education + tempWeights.compensation + tempWeights.locationNotice) > 0 ? `+${100 - (tempWeights.technical + tempWeights.experience + tempWeights.education + tempWeights.compensation + tempWeights.locationNotice)}%` : `${100 - (tempWeights.technical + tempWeights.experience + tempWeights.education + tempWeights.compensation + tempWeights.locationNotice)}%`}).
-                            </span>
-                          </div>
-                        )}
+                          {/* Simple & Neat Quick-Add Question Bar */}
+                          <form onSubmit={handleAddQuestion} className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800/80 shadow-md">
+                            <div className="flex flex-col md:flex-row items-center gap-3">
+                              <div className="flex items-center space-x-2 shrink-0 self-start md:self-center">
+                                <span className="text-pink-400 font-black text-sm pl-1">+</span>
+                                <span className="text-xs font-bold text-slate-300 whitespace-nowrap">Add Question:</span>
+                              </div>
 
-                        <button
-                          type="button"
-                          disabled={tempWeights.technical + tempWeights.experience + tempWeights.education + tempWeights.compensation + tempWeights.locationNotice !== 100}
-                          onClick={handleApplyWeights}
-                          className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs shadow-lg shadow-indigo-600/25 transition-all cursor-pointer flex items-center space-x-2 active:scale-95"
-                        >
-                          <span>Apply & Recalculate Pool Scores →</span>
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {[
-                        { dim: "Technical Skills Match", weight: `${rubricWeights.technical}%`, desc: "Cosine similarity between candidate's 1536d resume embedding and required tech stack (Python, FastAPI, PostgreSQL, LangGraph).", color: "text-indigo-400 border-indigo-500/30 bg-indigo-500/10" },
-                        { dim: "Experience & Seniority", weight: `${rubricWeights.experience}%`, desc: "Evaluation of total industry experience years against job requirements (e.g., 5+ years for Senior roles).", color: "text-purple-400 border-purple-500/30 bg-purple-500/10" },
-                        { dim: "Education & Certifications", weight: `${rubricWeights.education}%`, desc: "Verification of relevant degrees in Computer Science, AI, or industry certifications (AWS, CKA).", color: "text-pink-400 border-pink-500/30 bg-pink-500/10" },
-                        { dim: "Compensation Alignment", weight: `${rubricWeights.compensation}%`, desc: "Alignment between candidate's expected salary and requisition budget ($130,000 - $160,000).", color: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10" },
-                        { dim: "Location & Notice Period", weight: `${rubricWeights.locationNotice}%`, desc: "Geographic timezone compatibility (Remote US/EU) and availability timeline (immediate vs 30-60 days).", color: "text-cyan-400 border-cyan-500/30 bg-cyan-500/10" }
-                      ].map((item, idx) => (
-                        <div key={idx} className="p-5 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-2 hover:border-slate-700 transition-all">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-white">{item.dim}</span>
-                            <span className={`px-2 py-0.5 rounded text-[11px] font-black border ${item.color}`}>
-                              {item.weight}
-                            </span>
+                              <select
+                                value={newQuestionCat}
+                                onChange={(e) => setNewQuestionCat(e.target.value)}
+                                className="w-full md:w-52 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-xs font-medium focus:outline-none focus:border-pink-500 cursor-pointer shrink-0"
+                              >
+                                <option>Technical / Core Stack</option>
+                                <option>System Architecture</option>
+                                <option>Behavioral & Leadership</option>
+                                <option>Scenario & Problem Solving</option>
+                              </select>
+
+                              <input
+                                type="text"
+                                required
+                                value={newQuestionText}
+                                onChange={(e) => setNewQuestionText(e.target.value)}
+                                placeholder="Type custom question or evaluation criteria here..."
+                                className="w-full px-4 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:border-pink-500 placeholder-slate-500"
+                              />
+
+                              <button
+                                type="submit"
+                                className="w-full md:w-auto px-5 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-bold text-xs shadow-md shrink-0 cursor-pointer transition-all active:scale-95"
+                              >
+                                Add
+                              </button>
+                            </div>
+                          </form>
+
+                          {/* Clean, Neat Single-Column Question Cards List */}
+                          <div className="space-y-3">
+                            {questions
+                              .filter(q => questionFilter === 'all' ? true : q.category === questionFilter)
+                              .map((q) => (
+                                <div
+                                  key={q.id}
+                                  className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/60 hover:border-slate-700/80 transition-all shadow-sm flex flex-col sm:flex-row sm:items-start justify-between gap-4 group"
+                                >
+                                  <div className="space-y-2.5 flex-1">
+                                    <div className="flex items-center space-x-2.5">
+                                      <span className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold border ${q.category === 'Technical / Core Stack' ? 'bg-purple-500/15 text-purple-300 border-purple-500/25' :
+                                        q.category === 'System Architecture' ? 'bg-cyan-500/15 text-cyan-300 border-cyan-500/25' :
+                                          q.category === 'Behavioral & Leadership' ? 'bg-pink-500/15 text-pink-300 border-pink-500/25' :
+                                            'bg-amber-500/15 text-amber-300 border-amber-500/25'
+                                        }`}>
+                                        {q.category}
+                                      </span>
+                                      <span className="text-xs font-mono font-semibold text-slate-500">Q#{q.id}</span>
+                                    </div>
+
+                                    <p className="text-sm font-semibold text-slate-100 leading-relaxed">
+                                      &ldquo;{q.question}&rdquo;
+                                    </p>
+
+                                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                                      <span className="text-[11px] text-slate-500 font-medium mr-1">Target Skills:</span>
+                                      {q.targetSkills.map((s, i) => (
+                                        <span key={i} className="px-2 py-0.5 rounded bg-slate-950/80 text-[11px] font-medium text-slate-300 border border-slate-800/80">
+                                          ✓ {s}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  <div className="flex sm:flex-col items-end justify-between sm:justify-start shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => setQuestions(prev => prev.filter(item => item.id !== q.id))}
+                                      className="px-3 py-1.5 rounded-lg bg-transparent hover:bg-red-500/15 text-slate-500 hover:text-red-400 text-xs font-medium transition-all cursor-pointer flex items-center space-x-1"
+                                      title="Delete question"
+                                    >
+                                      <span>Delete</span>
+                                      <span>🗑</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+
+                            {questions.filter(q => questionFilter === 'all' ? true : q.category === questionFilter).length === 0 && (
+                              <div className="py-12 text-center text-slate-400 text-xs font-medium bg-slate-900/40 rounded-2xl border border-dashed border-slate-800">
+                                No questions found in <span className="font-bold text-pink-400">"{questionFilter}"</span> category.
+                              </div>
+                            )}
                           </div>
-                          <p className="text-xs text-slate-400 leading-relaxed">{item.desc}</p>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
+                      )}
 
-        </div>
-      </main>
+                      {/* VIEW 6: APPROVALS / REJECTED (HITL Queue Kanban Board matching exact image UI) */}
+                      {activeTab === 'approvals' && (
+                        <div className="space-y-6">
+                          <div className="p-8 rounded-3xl bg-slate-900/80 border border-slate-800/80 shadow-2xl space-y-6">
+                            {/* Header Title Box (Row 1) */}
+                            <div className="flex flex-col space-y-1.5 pb-4 border-b border-slate-800/80">
+                              <h2 className="text-2xl font-extrabold text-white flex items-center space-x-2.5">
+                                <span className="w-3 h-3 rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 animate-pulse" />
+                                <span>Recruitment Pipeline & HITL Board</span>
+                              </h2>
+                              <p className="text-xs text-slate-400 max-w-3xl">
+                                Drag and drop candidate cards across stages to update pipeline status, or click any card to inspect full AI evaluation scores and interview details.
+                              </p>
+                            </div>
+
+                            {/* Action Bar & Total Count (Row 2) */}
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+                              <div className="flex items-center space-x-2 bg-slate-950/80 px-4 py-2 rounded-2xl border border-slate-800/80 shadow-inner">
+                                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                                <span className="text-xs font-bold text-slate-300">
+                                  Active Candidate Pool: <strong className="text-indigo-400 font-mono text-sm ml-1">{candidates.length}</strong> Profiles
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* 5-Column Kanban Grid: Candidates + Scheduled + Review + Approved + Rejected */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-start pb-4">
+                              {[
+                                { id: 'Applied' as CandidateStatus, title: 'Candidates', subtitle: 'Applied Pool', borderTop: 'border-t-4 border-t-purple-500', headerBg: 'bg-slate-900', pillColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30' },
+                                { id: 'Pending HR Review' as CandidateStatus, title: 'Scheduled', subtitle: 'Schedule & Review', borderTop: 'border-t-4 border-t-indigo-500', headerBg: 'bg-slate-900', pillColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' },
+                                { id: 'Hold' as CandidateStatus, title: 'Review', subtitle: 'Ongoing / Hold', borderTop: 'border-t-4 border-t-pink-500', headerBg: 'bg-slate-900', pillColor: 'bg-pink-500/20 text-pink-300 border-pink-500/30' },
+                                { id: 'Offer Sent' as CandidateStatus, title: 'Approved', subtitle: 'Hired Board', borderTop: 'border-t-4 border-t-emerald-500', headerBg: 'bg-slate-900', pillColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' },
+                                { id: 'Rejected' as CandidateStatus, title: 'Rejected', subtitle: 'Archived Board', borderTop: 'border-t-4 border-t-blue-500', headerBg: 'bg-slate-900', pillColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30' }
+                              ].map((col) => {
+                                const colCards = candidates.filter(c => c.status === col.id);
+                                const isDragOver = dragOverCol === col.id;
+
+                                return (
+                                  <div
+                                    key={col.id}
+                                    onDragOver={(e) => handleDragOver(e, col.id)}
+                                    onDragLeave={() => setDragOverCol(null)}
+                                    onDrop={(e) => handleDropCard(e, col.id)}
+                                    className={`rounded-2xl bg-slate-950/80 border ${isDragOver ? 'border-2 border-indigo-500 shadow-2xl shadow-indigo-500/20 bg-slate-900/80' : 'border-slate-800/80'
+                                      } transition-all flex flex-col min-h-[540px] overflow-hidden`}
+                                  >
+                                    {/* Column Header */}
+                                    <div className={`p-4 ${col.headerBg} ${col.borderTop} border-b border-slate-800 flex items-center justify-between`}>
+                                      <div className="flex items-center space-x-2">
+                                        <h3 className="text-sm font-bold text-white tracking-wide">{col.title}</h3>
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${col.pillColor}`}>
+                                          {colCards.length}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {/* Column Cards Container */}
+                                    <div className="p-3.5 space-y-3.5 flex-1 overflow-y-auto max-h-[640px] custom-scrollbar">
+                                      {colCards.length === 0 ? (
+                                        <div className="h-44 border-2 border-dashed border-slate-800/60 rounded-2xl flex flex-col items-center justify-center text-center p-4">
+                                          <p className="text-xs font-semibold text-slate-500">No cards in {col.title}</p>
+                                          <p className="text-[10px] text-slate-600 mt-1">Drag & drop cards here to update pipeline status</p>
+                                        </div>
+                                      ) : (
+                                        colCards.map((cand) => (
+                                          <div
+                                            key={cand.id}
+                                            draggable
+                                            onDragStart={(e) => handleDragStart(e, cand.id)}
+                                            onDragEnd={() => setDraggedCandId(null)}
+                                            className={`p-4 rounded-2xl bg-slate-900/90 border ${draggedCandId === cand.id ? 'opacity-40 border-dashed border-indigo-500 scale-95' : 'border-slate-800 hover:border-slate-700 shadow-lg hover:shadow-xl'
+                                              } transition-all cursor-grab active:cursor-grabbing group space-y-3 relative`}
+                                          >
+                                            {/* Top Header: Candidate Name, Role & Score below role */}
+                                            <div className="space-y-2 border-b border-slate-800/80 pb-3">
+                                              <div>
+                                                <div className="flex items-center justify-between gap-2">
+                                                  <h4 className="text-xs font-bold text-white group-hover:text-indigo-300 transition-colors">
+                                                    {cand.name}
+                                                  </h4>
+                                                  {cand.linkedinUrl && (
+                                                    <a
+                                                      href={cand.linkedinUrl}
+                                                      target="_blank"
+                                                      rel="noopener noreferrer"
+                                                      className="px-2 py-0.5 rounded-full bg-[#0A66C2]/10 text-[#0A66C2] text-[10px] font-bold hover:bg-[#0A66C2]/20 transition-colors flex items-center space-x-1 border border-[#0A66C2]/30 shrink-0"
+                                                    >
+                                                      <span>Connect</span>
+                                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                                      </svg>
+                                                    </a>
+                                                  )}
+                                                </div>
+                                                <p className="text-[10px] text-slate-400 mt-0.5 font-medium">{cand.role || 'AI Backend Engineer'}</p>
+                                              </div>
+
+                                              {/* Score displayed right below the role */}
+                                              <div className="pt-0.5">
+                                                {cand.status === 'Applied' || cand.status === 'Pending HR Review' ? (
+                                                  <div className="flex items-center justify-between px-2.5 py-1 rounded-lg bg-purple-500/15 border border-purple-500/30 text-[11px] font-bold text-purple-300">
+                                                    <span className="text-[10px] font-medium text-purple-300/80">Resume Ranking Score</span>
+                                                    <span className="font-mono font-extrabold">{cand.matchScore}%</span>
+                                                  </div>
+                                                ) : (
+                                                  <div className="flex items-center justify-between px-2.5 py-1 rounded-lg bg-indigo-500/15 border border-indigo-500/30 text-[11px] font-bold text-indigo-300">
+                                                    <span className="text-[10px] font-medium text-indigo-300/80">Interview Score</span>
+                                                    <span className="font-mono font-extrabold">{cand.evaluationDetails?.overall || cand.matchScore}%</span>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </div>
+
+                                            {/* Skills / Role tags */}
+                                            <div className="flex flex-wrap gap-1.5">
+                                              <span className="px-2.5 py-1 rounded-lg bg-indigo-500/15 border border-indigo-500/25 text-[10px] font-bold text-indigo-300">
+                                                {cand.skills[0] || 'Variant 1'}
+                                              </span>
+                                              {cand.skills[1] && (
+                                                <span className="px-2 py-0.5 rounded-lg bg-slate-950/80 border border-slate-800/80 text-[10px] text-slate-300 font-medium">
+                                                  {cand.skills[1]}
+                                                </span>
+                                              )}
+                                              {cand.skills[2] && (
+                                                <span className="px-2 py-0.5 rounded-lg bg-slate-950/80 border border-slate-800/80 text-[10px] text-slate-400 font-medium">
+                                                  {cand.skills[2]}
+                                                </span>
+                                              )}
+                                            </div>
+
+                                            {/* Years of Experience */}
+                                            <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-800/60">
+                                              <span className="text-slate-500 font-medium">Experience</span>
+                                              <span className="text-slate-300 font-semibold">{cand.experience}</span>
+                                            </div>
+                                          </div>
+                                        ))
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Modal for Manual + Agent Card Creation */}
+                            {showAddCardModal && (
+                              <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+                                <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-slate-800 p-6 shadow-2xl space-y-5">
+                                  <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                                    <div>
+                                      <h3 className="text-base font-bold text-white flex items-center space-x-2">
+                                        <span>+ Add Card to Kanban Board</span>
+                                      </h3>
+                                      <p className="text-xs text-slate-400 mt-0.5">Adding to column: <strong className="text-indigo-400">{showAddCardModal}</strong></p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => setShowAddCardModal(null)}
+                                      className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center font-bold cursor-pointer"
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+
+                                  <form onSubmit={handleCreateCard} className="space-y-4">
+                                    <div className="space-y-1.5">
+                                      <label className="text-xs font-semibold text-slate-300">Candidate Full Name *</label>
+                                      <input
+                                        type="text"
+                                        required
+                                        value={newCardName}
+                                        onChange={(e) => setNewCardName(e.target.value)}
+                                        placeholder="e.g. James Smith"
+                                        className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                      />
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                      <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-slate-300">Email Address</label>
+                                        <input
+                                          type="email"
+                                          value={newCardEmail}
+                                          onChange={(e) => setNewCardEmail(e.target.value)}
+                                          placeholder="james@example.com"
+                                          className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        />
+                                      </div>
+                                      <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-slate-300">Match Score (0-100)</label>
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          max={100}
+                                          value={newCardScore}
+                                          onChange={(e) => setNewCardScore(e.target.value)}
+                                          className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        />
+                                      </div>
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                      <label className="text-xs font-semibold text-slate-300">Skills / Variant Tags (comma separated)</label>
+                                      <input
+                                        type="text"
+                                        value={newCardSkills}
+                                        onChange={(e) => setNewCardSkills(e.target.value)}
+                                        placeholder="Variant 1, Python, LangGraph"
+                                        className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                      />
+                                    </div>
+
+                                    <div className="flex items-center justify-end space-x-3 pt-2 border-t border-slate-800">
+                                      <button
+                                        type="button"
+                                        onClick={() => setShowAddCardModal(null)}
+                                        className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs cursor-pointer"
+                                      >
+                                        Cancel
+                                      </button>
+                                      <button
+                                        type="submit"
+                                        className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md cursor-pointer"
+                                      >
+                                        Add Card & Run Agent Check
+                                      </button>
+                                    </div>
+                                  </form>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* VIEW 7: SCORE DEFINITION SECTION */}
+                      {activeTab === 'score-definition' && (
+                        <div className="space-y-6">
+                          <div className="p-8 rounded-3xl bg-slate-900/80 border border-slate-800/80 shadow-2xl space-y-6">
+                            <div className="border-b border-slate-800 pb-6">
+                              <h2 className="text-2xl font-extrabold text-white flex items-center space-x-2">
+                                <span className="w-3 h-3 rounded-full bg-cyan-500 animate-pulse" />
+                                <span>Candidate Assessment & Score Definition Rubric</span>
+                              </h2>
+                              <p className="text-xs text-slate-400 mt-1">
+                                Transparent breakdown of how the **Candidate Assessment Agent** and **Critic Agent** calculate similarity scores and audit evaluations for fairness.
+                              </p>
+                            </div>
+
+                            {saveSuccessMsg && (
+                              <div className="p-4 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex items-center justify-between">
+                                <div className="flex items-center space-x-2">
+                                  <svg className="w-4 h-4 shrink-0 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                  <span>{saveSuccessMsg}</span>
+                                </div>
+                                <button type="button" onClick={() => setSaveSuccessMsg("")} className="text-emerald-400 hover:text-white cursor-pointer font-bold">×</button>
+                              </div>
+                            )}
+
+                            {/* 5 Weighted Dimensions */}
+                            <div className="space-y-4">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div className="flex items-center space-x-2">
+                                  <h3 className="text-base font-bold text-white">Multi-Dimensional Similarity Scoring Rubric (100 Max Score)</h3>
+                                  <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[10px] font-bold border border-indigo-500/30">
+                                    Editable by HR
+                                  </span>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                  {!isEditingWeights ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setTempWeights({ ...rubricWeights });
+                                        setIsEditingWeights(true);
+                                        setSaveSuccessMsg("");
+                                      }}
+                                      className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs shadow-md shadow-indigo-600/20 transition-all cursor-pointer flex items-center space-x-1.5 active:scale-95"
+                                    >
+                                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                      </svg>
+                                      <span>Customize Weightage</span>
+                                    </button>
+                                  ) : (
+                                    <div className="flex items-center space-x-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setTempWeights({
+                                            technical: 45,
+                                            experience: 25,
+                                            education: 10,
+                                            compensation: 10,
+                                            locationNotice: 10
+                                          });
+                                        }}
+                                        className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-all cursor-pointer"
+                                      >
+                                        Reset Defaults
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setIsEditingWeights(false)}
+                                        className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white font-semibold text-xs border border-slate-800 transition-all cursor-pointer"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {isEditingWeights ? (
+                                <div className="p-6 rounded-3xl bg-slate-950/80 border border-indigo-500/40 shadow-2xl space-y-6 animate-in fade-in duration-200">
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-4">
+                                    <div>
+                                      <h4 className="text-sm font-bold text-white flex items-center space-x-2">
+                                        <span>Adjust Scoring Rubric Weightages</span>
+                                        <span className="text-[10px] font-normal text-indigo-400">(Total must equal 100%)</span>
+                                      </h4>
+                                      <p className="text-xs text-slate-400 mt-0.5">Move sliders or enter custom percentages. Saving will recalculate all candidate match scores.</p>
+                                    </div>
+                                    <div className="flex items-center space-x-2">
+                                      <span className="text-xs font-semibold text-slate-400">Total Weight:</span>
+                                      <span className={`px-3 py-1 rounded-xl text-xs font-black border ${tempWeights.technical + tempWeights.experience + tempWeights.education + tempWeights.compensation + tempWeights.locationNotice === 100
+                                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                        : 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
+                                        }`}>
+                                        {tempWeights.technical + tempWeights.experience + tempWeights.education + tempWeights.compensation + tempWeights.locationNotice}% / 100%
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* Visual Proportional Bar */}
+                                  <div className="w-full h-3 rounded-full bg-slate-900 overflow-hidden flex">
+                                    <div style={{ width: `${tempWeights.technical}%` }} className="bg-indigo-500 transition-all duration-300" title={`Technical: ${tempWeights.technical}%`} />
+                                    <div style={{ width: `${tempWeights.experience}%` }} className="bg-purple-500 transition-all duration-300" title={`Experience: ${tempWeights.experience}%`} />
+                                    <div style={{ width: `${tempWeights.education}%` }} className="bg-pink-500 transition-all duration-300" title={`Education: ${tempWeights.education}%`} />
+                                    <div style={{ width: `${tempWeights.compensation}%` }} className="bg-emerald-500 transition-all duration-300" title={`Compensation: ${tempWeights.compensation}%`} />
+                                    <div style={{ width: `${tempWeights.locationNotice}%` }} className="bg-cyan-500 transition-all duration-300" title={`Location & Notice: ${tempWeights.locationNotice}%`} />
+                                  </div>
+
+                                  {/* Sliders & Inputs Grid */}
+                                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {[
+                                      { key: 'technical' as const, label: "Technical Skills Match", color: "text-indigo-400 border-indigo-500/30 bg-indigo-500/10", accent: "accent-indigo-500", desc: "Cosine similarity between resume embedding & tech stack." },
+                                      { key: 'experience' as const, label: "Experience & Seniority", color: "text-purple-400 border-purple-500/30 bg-purple-500/10", accent: "accent-purple-500", desc: "Industry experience years against job requirements." },
+                                      { key: 'education' as const, label: "Education & Certifications", color: "text-pink-400 border-pink-500/30 bg-pink-500/10", accent: "accent-pink-500", desc: "Relevant degrees in CS, AI, or certifications (AWS, CKA)." },
+                                      { key: 'compensation' as const, label: "Compensation Alignment", color: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10", accent: "accent-emerald-500", desc: "Alignment with expected salary ($130k - $160k)." },
+                                      { key: 'locationNotice' as const, label: "Location & Notice Period", color: "text-cyan-400 border-cyan-500/30 bg-cyan-500/10", accent: "accent-cyan-500", desc: "Timezone compatibility & availability timeline." }
+                                    ].map((dim) => (
+                                      <div key={dim.key} className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xs font-bold text-white">{dim.label}</span>
+                                          <span className={`px-2 py-0.5 rounded text-[11px] font-black border ${dim.color}`}>
+                                            {tempWeights[dim.key]}%
+                                          </span>
+                                        </div>
+                                        <p className="text-[11px] text-slate-400 leading-relaxed">{dim.desc}</p>
+                                        <div className="flex items-center space-x-3 pt-1">
+                                          <input
+                                            type="range"
+                                            min={0}
+                                            max={100}
+                                            step={1}
+                                            value={tempWeights[dim.key]}
+                                            onChange={(e) => {
+                                              const val = parseInt(e.target.value) || 0;
+                                              setTempWeights(prev => ({ ...prev, [dim.key]: val }));
+                                            }}
+                                            className={`w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer ${dim.accent}`}
+                                          />
+                                          <input
+                                            type="number"
+                                            min={0}
+                                            max={100}
+                                            value={tempWeights[dim.key]}
+                                            onChange={(e) => {
+                                              const val = parseInt(e.target.value) || 0;
+                                              setTempWeights(prev => ({ ...prev, [dim.key]: Math.min(100, Math.max(0, val)) }));
+                                            }}
+                                            className="w-16 px-2 py-1 rounded bg-slate-950 border border-slate-800 text-xs font-mono font-bold text-center text-white focus:outline-none focus:border-indigo-500"
+                                          />
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+
+                                  {/* Action Bar */}
+                                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-800">
+                                    {tempWeights.technical + tempWeights.experience + tempWeights.education + tempWeights.compensation + tempWeights.locationNotice === 100 ? (
+                                      <div className="flex items-center space-x-2 text-emerald-400 text-xs font-bold">
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                        </svg>
+                                        <span>Total equals 100%. Ready to apply rubric across all candidates.</span>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center space-x-2 text-amber-400 text-xs font-bold">
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                        </svg>
+                                        <span>
+                                          Total is {tempWeights.technical + tempWeights.experience + tempWeights.education + tempWeights.compensation + tempWeights.locationNotice}%. Must equal 100% (Adjust by {100 - (tempWeights.technical + tempWeights.experience + tempWeights.education + tempWeights.compensation + tempWeights.locationNotice) > 0 ? `+${100 - (tempWeights.technical + tempWeights.experience + tempWeights.education + tempWeights.compensation + tempWeights.locationNotice)}%` : `${100 - (tempWeights.technical + tempWeights.experience + tempWeights.education + tempWeights.compensation + tempWeights.locationNotice)}%`}).
+                                        </span>
+                                      </div>
+                                    )}
+
+                                    <button
+                                      type="button"
+                                      disabled={tempWeights.technical + tempWeights.experience + tempWeights.education + tempWeights.compensation + tempWeights.locationNotice !== 100}
+                                      onClick={handleApplyWeights}
+                                      className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs shadow-lg shadow-indigo-600/25 transition-all cursor-pointer flex items-center space-x-2 active:scale-95"
+                                    >
+                                      <span>Apply & Recalculate Pool Scores →</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                  {[
+                                    { dim: "Technical Skills Match", weight: `${rubricWeights.technical}%`, desc: "Cosine similarity between candidate's 1536d resume embedding and required tech stack (Python, FastAPI, PostgreSQL, LangGraph).", color: "text-indigo-400 border-indigo-500/30 bg-indigo-500/10" },
+                                    { dim: "Experience & Seniority", weight: `${rubricWeights.experience}%`, desc: "Evaluation of total industry experience years against job requirements (e.g., 5+ years for Senior roles).", color: "text-purple-400 border-purple-500/30 bg-purple-500/10" },
+                                    { dim: "Education & Certifications", weight: `${rubricWeights.education}%`, desc: "Verification of relevant degrees in Computer Science, AI, or industry certifications (AWS, CKA).", color: "text-pink-400 border-pink-500/30 bg-pink-500/10" },
+                                    { dim: "Compensation Alignment", weight: `${rubricWeights.compensation}%`, desc: "Alignment between candidate's expected salary and requisition budget ($130,000 - $160,000).", color: "text-emerald-400 border-emerald-500/30 bg-emerald-500/10" },
+                                    { dim: "Location & Notice Period", weight: `${rubricWeights.locationNotice}%`, desc: "Geographic timezone compatibility (Remote US/EU) and availability timeline (immediate vs 30-60 days).", color: "text-cyan-400 border-cyan-500/30 bg-cyan-500/10" }
+                                  ].map((item, idx) => (
+                                    <div key={idx} className="p-5 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-2 hover:border-slate-700 transition-all">
+                                      <div className="flex items-center justify-between">
+                                        <span className="text-xs font-bold text-white">{item.dim}</span>
+                                        <span className={`px-2 py-0.5 rounded text-[11px] font-black border ${item.color}`}>
+                                          {item.weight}
+                                        </span>
+                                      </div>
+                                      <p className="text-xs text-slate-400 leading-relaxed">{item.desc}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                    </div>
+                  </main>
     </div>
-  );
+              );
 };
