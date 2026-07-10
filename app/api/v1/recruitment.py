@@ -1,9 +1,17 @@
 import uuid
+import logging
 from typing import Dict, Any, Optional
 from pydantic import BaseModel
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from app.db.session import get_db
+from app.models.candidate import Candidate, Resume as ResumeModel
+from app.models.interview import AuditLog
 from app.graphs.checkpointer import get_checkpointer
 from app.graphs.recruitment_flow import create_recruitment_graph
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -30,8 +38,11 @@ class SerperSearchRequest(BaseModel):
 from app.agents.discovery import discover_candidates
 
 @router.post("/serper-search", status_code=status.HTTP_200_OK)
-async def perform_serper_search(req: SerperSearchRequest) -> Dict[str, Any]:
-    """Performs LinkedIn Serper Search and returns raw candidates, bypassing LLM parsing."""
+async def perform_serper_search(
+    req: SerperSearchRequest,
+    db: AsyncSession = Depends(get_db)
+) -> Dict[str, Any]:
+    """Performs LinkedIn Serper Search, saves candidates and logs the search in the DB."""
     # 1. Discover
     discovery_res = await discover_candidates(
         job_title=req.job_title, 
@@ -45,6 +56,41 @@ async def perform_serper_search(req: SerperSearchRequest) -> Dict[str, Any]:
     job_criteria = discovery_res.data.job_criteria
     candidates_list = discovery_res.data.parsed_candidates  # Contains raw candidates now
     
+    # Save search audit and candidate list to DB
+    try:
+        # Create Search Audit Log
+        audit = AuditLog(
+            action="serper_search",
+            entity="candidates",
+            ip_address="127.0.0.1"
+        )
+        db.add(audit)
+        
+        # Save Sourced Candidates
+        for cand in candidates_list:
+            stmt = select(Candidate).where(Candidate.email == cand["email"])
+            res = await db.execute(stmt)
+            candidate = res.scalar_one_or_none()
+            
+            if not candidate:
+                candidate = Candidate(
+                    email=cand["email"],
+                    name=cand["name"],
+                    linkedin=cand["resume_url"],
+                    location=req.location,
+                    status="sourced"
+                )
+                db.add(candidate)
+            else:
+                candidate.linkedin = cand["resume_url"] or candidate.linkedin
+                candidate.status = "sourced"
+                
+        await db.commit()
+        logger.info(f"Successfully saved {len(candidates_list)} sourced candidates and search audit log to DB.")
+    except Exception as db_exc:
+        await db.rollback()
+        logger.error(f"Failed to save search results to DB: {db_exc}")
+
     return {
         "status": "success",
         "query_used": discovery_res.data.linkedin_boolean_query,

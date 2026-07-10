@@ -264,6 +264,165 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
   const [newQuestionText, setNewQuestionText] = useState("");
   const [newQuestionCat, setNewQuestionCat] = useState("Technical / Core Stack");
 
+  // Resume Parsing States
+  const [selectedResumes, setSelectedResumes] = useState<File[]>([]);
+  const [parsedResumes, setParsedResumes] = useState<any[]>([]);
+  const [isParsing, setIsParsing] = useState(false);
+
+  const handleResumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const filesArray = Array.from(e.target.files);
+      setSelectedResumes(prev => [...prev, ...filesArray]);
+    }
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setSelectedResumes(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleParseResumes = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedResumes.length === 0) return;
+
+    setIsParsing(true);
+    const formData = new FormData();
+    selectedResumes.forEach(file => {
+      formData.append('files', file);
+    });
+    formData.append('job_title', jobTitle + (keywords ? `, ${keywords}` : ''));
+    formData.append('experience', experience);
+
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/resume/parse', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to parse resumes');
+      }
+
+      const data = await response.json();
+      setParsedResumes(data);
+
+      // Automatically add parsed candidates to the candidates pool and re-rank
+      setCandidates(prev => {
+        let updated = [...prev];
+        data.forEach((res: any) => {
+          const isAlreadyAdded = updated.some(c => c.email === res.parsed.email || c.name === res.parsed.name);
+          if (!isAlreadyAdded) {
+            const newCandidate: CandidateMatch = {
+              id: res.candidate_id,
+              name: res.parsed.name || "Unknown Candidate",
+              email: res.parsed.email || "no-email@example.com",
+              linkedinUrl: "",
+              matchScore: Math.round(res.ats_score),
+              ranking: updated.length + 1,
+              skills: res.parsed.skills.length > 0 ? res.parsed.skills : ["Parsed Candidate"],
+              experience: `${res.parsed.experience_years.toFixed(1)} Years`,
+              salary: "Negotiable",
+              location: "Uploaded Resume",
+              status: 'Pending HR Review',
+              recommendation: res.recommendation,
+              interviewStatus: 'Pending',
+              interviewMode: 'AI Chat Studio'
+            };
+            updated.push(newCandidate);
+          }
+        });
+
+        // Re-rank based on matchScore descending
+        return updated
+          .sort((a, b) => b.matchScore - a.matchScore)
+          .map((c, index) => ({
+            ...c,
+            ranking: index + 1
+          }));
+      });
+
+      setLogs(prev => [
+        {
+          id: `log-${Date.now()}-parse`,
+          timestamp: new Date().toLocaleTimeString(),
+          agentName: 'CandidateDiscoveryAgent',
+          action: `Successfully parsed and scored ${selectedResumes.length} resumes locally using pdfminer & regex NLP.`,
+          latency: '1.2s',
+          tokens: 0,
+          cost: '$0.00',
+          status: 'success'
+        },
+        ...prev
+      ]);
+    } catch (err) {
+      console.error(err);
+      setLogs(prev => [
+        {
+          id: `log-${Date.now()}-parse-err`,
+          timestamp: new Date().toLocaleTimeString(),
+          agentName: 'CandidateDiscoveryAgent',
+          action: `Error parsing resumes. Please check backend connection.`,
+          latency: '0ms',
+          tokens: 0,
+          cost: '$0.00',
+          status: 'error'
+        },
+        ...prev
+      ]);
+    } finally {
+      setIsParsing(false);
+    }
+  };
+
+  const handleAddCandidateToLeaderboard = (res: any) => {
+    const isAlreadyAdded = candidates.some(c => c.email === res.parsed.email || c.name === res.parsed.name);
+    if (isAlreadyAdded) {
+      alert("Candidate has already been added to the leaderboard.");
+      return;
+    }
+
+    const newCandidate: CandidateMatch = {
+      id: res.candidate_id,
+      name: res.parsed.name || "Unknown Candidate",
+      email: res.parsed.email || "no-email@example.com",
+      linkedinUrl: "", // Local upload, no linkedin URL
+      matchScore: Math.round(res.ats_score),
+      ranking: candidates.length + 1,
+      skills: res.parsed.skills.length > 0 ? res.parsed.skills : ["Parsed Candidate"],
+      experience: `${res.parsed.experience_years.toFixed(1)} Years`,
+      salary: "Negotiable",
+      location: "Uploaded Resume",
+      status: 'Pending HR Review',
+      recommendation: res.recommendation,
+      interviewStatus: 'Pending',
+      interviewMode: 'AI Chat Studio'
+    };
+
+    setCandidates(prev => {
+      const updated = [...prev, newCandidate];
+      // Re-rank based on matchScore descending
+      return updated
+        .sort((a, b) => b.matchScore - a.matchScore)
+        .map((c, index) => ({
+          ...c,
+          ranking: index + 1
+        }));
+    });
+
+    setLogs(prev => [
+      {
+        id: `log-${Date.now()}-add`,
+        timestamp: new Date().toLocaleTimeString(),
+        agentName: 'DecisionAgent',
+        action: `Added parsed candidate '${newCandidate.name}' with ATS Score ${newCandidate.matchScore}% to the main candidate pool.`,
+        latency: '5ms',
+        tokens: 0,
+        cost: '$0.00',
+        status: 'success'
+      },
+      ...prev
+    ]);
+  };
+
   // Telemetry Audit Logs
   const [logs, setLogs] = useState<AgentLog[]>([
     { id: 'log-1', timestamp: '14:20:01', agentName: 'RecruitmentOrchestrator', action: 'Initialized workflow session & delegated Stage 1 to Discovery Agent', latency: '110ms', tokens: 120, cost: '$0.0004', status: 'success' },
@@ -1076,13 +1235,217 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
 
           {/* VIEW 3: CANDIDATES RESUME PAGE */}
           {activeTab === 'ranking' && (
-            <div className="space-y-6">
-              <div className="p-8 rounded-3xl bg-slate-900/80 border border-slate-800/80 shadow-2xl text-center py-20 flex flex-col items-center justify-center">
-                <svg className="w-16 h-16 text-slate-700 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <h3 className="text-xl font-bold text-slate-300">Candidates Resume</h3>
-                <p className="text-sm text-slate-500 mt-2">Resume viewer and parsed details will appear here.</p>
+            <div className="space-y-8 animate-in fade-in duration-300">
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+                {/* Column 1: Upload & Files list */}
+                <div className="xl:col-span-1 space-y-6">
+                  <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800/80 shadow-2xl space-y-6">
+                    <div>
+                      <h2 className="text-xl font-extrabold text-white flex items-center space-x-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse" />
+                        <span>Upload Candidate Resumes</span>
+                      </h2>
+                      <p className="text-xs text-slate-400 mt-1">
+                        Upload candidate resumes to analyze and score them against the current Requisition: <strong className="text-indigo-400">{jobTitle}</strong>.
+                      </p>
+                    </div>
+
+                    <form onSubmit={handleParseResumes} className="space-y-4">
+                      {/* Drag and Drop Zone */}
+                      <div className="border-2 border-dashed border-slate-800 hover:border-indigo-500/50 rounded-2xl p-6 transition-all bg-slate-950/40 hover:bg-slate-950/60 relative group flex flex-col items-center justify-center text-center cursor-pointer min-h-[160px]">
+                        <input
+                          type="file"
+                          multiple
+                          accept=".pdf"
+                          onChange={handleResumeChange}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        />
+                        <svg className="w-10 h-10 text-slate-500 group-hover:text-indigo-400 transition-colors mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        <p className="text-xs font-bold text-slate-300">Drag & Drop Resumes here</p>
+                        <p className="text-[10px] text-slate-500 mt-1">Supports PDF format only</p>
+                      </div>
+
+                      {/* Selected Files List */}
+                      {selectedResumes.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                            <span>Selected Files ({selectedResumes.length})</span>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedResumes([])}
+                              className="text-red-400 hover:text-red-300 transition-colors cursor-pointer"
+                            >
+                              Clear All
+                            </button>
+                          </div>
+                          <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
+                            {selectedResumes.map((file, idx) => (
+                              <div key={idx} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 text-xs">
+                                <span className="truncate text-slate-300 max-w-[180px]">{file.name}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveFile(idx)}
+                                  className="text-slate-500 hover:text-red-400 p-0.5 rounded transition-colors cursor-pointer"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <button
+                        type="submit"
+                        disabled={selectedResumes.length === 0 || isParsing}
+                        className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs shadow-md shadow-indigo-600/25 transition-all flex items-center justify-center space-x-2 disabled:opacity-50 cursor-pointer"
+                      >
+                        {isParsing ? (
+                          <>
+                            <svg className="animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                            <span>Analyzing Resumes...</span>
+                          </>
+                        ) : (
+                          <span>Analyze & Score Resumes</span>
+                        )}
+                      </button>
+                    </form>
+                  </div>
+                </div>
+
+                {/* Column 2: Parser Results & ATS Leaderboard */}
+                <div className="xl:col-span-2 space-y-6">
+                  {parsedResumes.length === 0 ? (
+                    <div className="p-8 rounded-3xl bg-slate-900/80 border border-slate-800/80 shadow-2xl text-center py-24 flex flex-col items-center justify-center">
+                      <svg className="w-16 h-16 text-slate-700 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <h3 className="text-base font-bold text-slate-300">No Resumes Parsed Yet</h3>
+                      <p className="text-xs text-slate-500 mt-1 max-w-sm">
+                        Use the upload box on the left to upload resumes. They will be analyzed, graded, and displayed here.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800/80 shadow-2xl space-y-6">
+                      <div className="flex justify-between items-center border-b border-slate-800 pb-4">
+                        <div>
+                          <h2 className="text-xl font-extrabold text-white flex items-center space-x-2">
+                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                            <span>ATS Leaderboard Results</span>
+                          </h2>
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            Candidates sorted by weighted cosine similarity and experience profile.
+                          </p>
+                        </div>
+                        <span className="px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30">
+                          Local Extraction Active
+                        </span>
+                      </div>
+
+                      <div className="space-y-6">
+                        {parsedResumes.map((res: any) => {
+                          const isAlreadyAdded = candidates.some(c => c.email === res.parsed.email || c.name === res.parsed.name);
+
+                          return (
+                            <div key={res.candidate_id} className="p-5 rounded-2xl bg-slate-950/60 border border-slate-800/80 space-y-4">
+                              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                <div className="space-y-1">
+                                  <div className="flex items-center space-x-2.5">
+                                    <h3 className="text-base font-bold text-slate-100">{res.parsed.name || "Unknown Candidate"}</h3>
+                                    <span className="text-[10px] text-slate-500">({res.filename})</span>
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
+                                    {res.parsed.email && <span>Email: <strong className="text-slate-300">{res.parsed.email}</strong></span>}
+                                    {res.parsed.phone && (
+                                      <>
+                                        <span>•</span>
+                                        <span>Phone: <strong className="text-slate-300">{res.parsed.phone}</strong></span>
+                                      </>
+                                    )}
+                                    <span>•</span>
+                                    <span>Exp: <strong className="text-slate-300">{res.parsed.experience_years.toFixed(1)} Years</strong></span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center space-x-6">
+                                  <div className="text-center">
+                                    <p className="text-[9px] font-semibold text-slate-500 uppercase tracking-wider">ATS Match Score</p>
+                                    <p className={`text-2xl font-black ${
+                                      res.ats_score >= 70 ? 'text-emerald-400' : res.ats_score >= 45 ? 'text-indigo-400' : 'text-red-400'
+                                    }`}>
+                                      {res.ats_score}%
+                                    </p>
+                                  </div>
+                                  <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-[10px] font-bold border border-emerald-500/20">
+                                    Added to Pool
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Dimensions Score Bars */}
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-900/40 p-3.5 rounded-xl border border-slate-800/40">
+                                {res.dimensions.map((dim: any) => (
+                                  <div key={dim.name} className="space-y-1">
+                                    <div className="flex justify-between text-[10px]">
+                                      <span className="font-medium text-slate-400">{dim.name} ({Math.round(dim.weight * 100)}%)</span>
+                                      <span className="font-bold text-slate-300">{dim.score}%</span>
+                                    </div>
+                                    <div className="h-1.5 bg-slate-950 rounded-full overflow-hidden">
+                                      <div
+                                        className={`h-full rounded-full ${
+                                          dim.score >= 70 ? 'bg-emerald-500' : dim.score >= 45 ? 'bg-indigo-500' : 'bg-red-500'
+                                        }`}
+                                        style={{ width: `${dim.score}%` }}
+                                      />
+                                    </div>
+                                    <p className="text-[9px] text-slate-500 italic">{dim.detail}</p>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Skills & Education */}
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                                <div className="space-y-1.5">
+                                  <span className="font-bold text-slate-400">Extracted Skills:</span>
+                                  <div className="flex flex-wrap gap-1">
+                                    {res.parsed.skills.length > 0 ? (
+                                      res.parsed.skills.map((skill: string, sIdx: number) => (
+                                        <span key={sIdx} className="px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px] text-indigo-300">
+                                          {skill}
+                                        </span>
+                                      ))
+                                    ) : (
+                                      <span className="text-slate-600 italic">None detected</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <span className="font-bold text-slate-400">Education Details:</span>
+                                  <ul className="list-disc list-inside space-y-1 text-slate-300 text-[11px]">
+                                    {res.parsed.education.length > 0 ? (
+                                      res.parsed.education.map((edu: string, eIdx: number) => (
+                                        <li key={eIdx} className="truncate" title={edu}>{edu}</li>
+                                      ))
+                                    ) : (
+                                      <span className="text-slate-600 italic">None detected</span>
+                                    )}
+                                  </ul>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
