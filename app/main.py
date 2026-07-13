@@ -1,14 +1,22 @@
+import asyncio
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.router import api_router
+from app.smtp_mock_server import start_mock_smtp_server_task
 import app.db.base  # Register all models for SQLAlchemy
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json"
 )
+
+
+@app.on_event("startup")
+async def startup_event():
+    # Run the mock SMTP server on port 1025 in the background
+    asyncio.create_task(start_mock_smtp_server_task())
 
 # CORS Middleware setup
 app.add_middleware(

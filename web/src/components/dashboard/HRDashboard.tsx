@@ -44,6 +44,26 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
   const [selectedCalendarDay, setSelectedCalendarDay] = useState<number | null>(null);
   const [interviewFilter, setInterviewFilter] = useState<'all' | 'Pending' | 'Scheduled' | 'In Progress' | 'Completed'>('all');
   const [questionFilter, setQuestionFilter] = useState<string>('all');
+  const [interviewSearchQuery, setInterviewSearchQuery] = useState('');
+  const [schedulingCandidateId, setSchedulingCandidateId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error'; visible: boolean }>({
+    message: '',
+    type: 'success',
+    visible: false
+  });
+
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type, visible: true });
+  };
+
+  useEffect(() => {
+    if (toast.visible) {
+      const timer = setTimeout(() => {
+        setToast(prev => ({ ...prev, visible: false }));
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast.visible]);
 
   // JD Upload & Orchestrator State
   const [jobTitle, setJobTitle] = useState('React Developer');
@@ -102,6 +122,68 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
       }
     };
     fetchCandidates();
+
+    if (typeof window === 'undefined') return;
+
+    // Setup WebSocket connection for event-driven real-time updates
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+    let wsUrl = '';
+    try {
+      const parsedApiUrl = new URL(apiUrl);
+      const wsProtocol = parsedApiUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+      wsUrl = `${wsProtocol}//${parsedApiUrl.host}/api/v1/recruitment/ws`;
+    } catch (e) {
+      wsUrl = apiUrl.replace(/^http/, 'ws') + '/api/v1/recruitment/ws';
+    }
+    
+    let socket: WebSocket | null = null;
+    let reconnectTimeout: any = null;
+
+    const connectWebSocket = () => {
+      try {
+        if (!window.WebSocket) return;
+        console.log('Attempting WebSocket connection to:', wsUrl);
+        socket = new WebSocket(wsUrl);
+
+        socket.onopen = () => {
+          console.log('WebSocket successfully connected to:', wsUrl);
+        };
+
+        socket.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.event === 'candidates_updated') {
+              fetchCandidates();
+            }
+          } catch (e) {
+            console.error('Failed to parse WebSocket message:', e);
+          }
+        };
+
+        socket.onclose = () => {
+          console.log('WebSocket closed for ' + wsUrl + '. Reconnecting in 3s...');
+          reconnectTimeout = setTimeout(connectWebSocket, 3000);
+        };
+
+        socket.onerror = (err) => {
+          console.error('WebSocket error connecting to ' + wsUrl + ':', err);
+        };
+      } catch (err) {
+        console.error('WebSocket initialization error:', err);
+      }
+    };
+
+    connectWebSocket();
+
+    return () => {
+      if (socket) {
+        socket.onclose = null;
+        socket.close();
+      }
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+    };
   }, []);
 
   // Questionnaire State (Generated from JD)
@@ -307,6 +389,63 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
 
   const updateCandidateStatus = (candId: string, newStatus: 'Scheduled' | 'In Progress' | 'Completed' | 'Pending' | 'Inprogress') => {
     setCandidates(prev => prev.map(c => c.id === candId ? { ...c, interviewStatus: newStatus } : c));
+  };
+
+  const handleScheduleInterview = async (cand: CandidateMatch) => {
+    setSchedulingCandidateId(cand.id);
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+      const response = await fetch(`${apiUrl}/api/v1/resume/schedule-interview`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          email: cand.email,
+          name: cand.name,
+          job_title: jobTitle
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to schedule interview: ' + response.statusText);
+      }
+
+      // Update the candidate's interviewStatus to 'Scheduled' and default date in the frontend state
+      setCandidates(prev => prev.map(c => c.id === cand.id ? {
+        ...c,
+        interviewStatus: 'Scheduled',
+        interviewDate: 'Awaiting Slot Selection @ -',
+        interviewMode: 'AI'
+      } : c));
+
+      setLogs(prev => [
+        {
+          id: `log-${Date.now()}-sched`,
+          timestamp: new Date().toLocaleTimeString(),
+          agentName: 'RecruitmentOrchestrator',
+          action: `Manually scheduled interview and dispatched credentials to candidate: ${cand.name} (${cand.email})`,
+          latency: '220ms',
+          tokens: 0,
+          cost: '$0.00',
+          status: 'success'
+        },
+        ...prev
+      ]);
+
+      showToast(
+        `Interview scheduled successfully. Credentials sent to ${cand.email}.`,
+        "success"
+      );
+    } catch (err) {
+      console.error("Error scheduling interview:", err);
+      showToast(
+        "Interview scheduling failed. Please try again.",
+        "error"
+      );
+    } finally {
+      setSchedulingCandidateId(null);
+    }
   };
 
   const handleLaunchPipeline = async (e: React.FormEvent) => {
@@ -770,69 +909,69 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                             No candidate records found in database. Upload a resume or run a discovery search above to populate.
                           </td>
                         </tr>
-                      ) : 
+                      ) :
                         candidates.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage).map((c) => (
-                        <tr key={c.id} className="hover:bg-slate-950/40 transition-colors">
-                          <td className="py-4 pr-4 font-bold text-white flex items-center space-x-3">
-                            <span className="w-6 h-6 rounded-lg bg-slate-800 flex items-center justify-center text-slate-300 text-[11px]">
-                              #{c.ranking}
-                            </span>
-                            <div>
-                              <p className="text-slate-100">{c.name}</p>
-                              {c.linkedinUrl && (
-                                <a
-                                  href={c.linkedinUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-[11px] font-bold text-[#0A66C2] hover:text-blue-400 transition-colors flex items-center space-x-1 mt-0.5"
-                                >
-                                  <span>Connect on LinkedIn</span>
-                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                  </svg>
-                                </a>
-                              )}
-                            </div>
-                          </td>
-                          <td className="py-4 px-4 font-black">
-                            <span className={`px-2 py-1 rounded-lg ${c.matchScore >= 90 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
-                              c.matchScore >= 75 ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' :
-                                'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                              }`}>
-                              {c.matchScore}%
-                            </span>
-                          </td>
-                          <td className="py-4 px-4">
-                            <div className="flex flex-wrap gap-1 max-w-xs">
-                              {c.skills.slice(0, 3).map((s, i) => (
-                                <span key={i} className="px-2 py-0.5 rounded bg-slate-950 text-[10px] text-slate-300 border border-slate-800">
-                                  {s}
-                                </span>
-                              ))}
-                              {c.skills.length > 3 && <span className="text-[10px] text-slate-500">+{c.skills.length - 3} more</span>}
-                            </div>
-                          </td>
-                          <td className="py-4 px-4 text-slate-300">{c.experience}</td>
-                          <td className="py-4 px-4">
-                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${c.interviewStatus === 'Scheduled' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' :
-                              c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30 animate-pulse' :
-                                c.interviewStatus === 'Completed' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
-                                  'bg-slate-800 text-slate-400'
-                              }`}>
-                              ● {c.interviewStatus}
-                            </span>
-                          </td>
-                          <td className="py-4 pl-4 text-right">
-                            <span className={`px-2.5 py-1 rounded-xl text-xs font-bold ${c.status === 'Offer Sent' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' :
-                              c.status === 'Rejected' ? 'bg-red-500/20 text-red-300 border border-red-500/40' :
-                                c.status === 'Hold' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' :
-                                  'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40'
-                              }`}>
-                              {c.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                          <tr key={c.id} className="hover:bg-slate-950/40 transition-colors">
+                            <td className="py-4 pr-4 font-bold text-white flex items-center space-x-3">
+                              <span className="w-6 h-6 rounded-lg bg-slate-800 flex items-center justify-center text-slate-300 text-[11px]">
+                                #{c.ranking}
+                              </span>
+                              <div>
+                                <p className="text-slate-100">{c.name}</p>
+                                {c.linkedinUrl && (
+                                  <a
+                                    href={c.linkedinUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-[11px] font-bold text-[#0A66C2] hover:text-blue-400 transition-colors flex items-center space-x-1 mt-0.5"
+                                  >
+                                    <span>Connect on LinkedIn</span>
+                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                    </svg>
+                                  </a>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-4 px-4 font-black">
+                              <span className={`px-2 py-1 rounded-lg ${c.matchScore >= 90 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
+                                c.matchScore >= 75 ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' :
+                                  'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                }`}>
+                                {c.matchScore}%
+                              </span>
+                            </td>
+                            <td className="py-4 px-4">
+                              <div className="flex flex-wrap gap-1 max-w-xs">
+                                {c.skills.slice(0, 3).map((s, i) => (
+                                  <span key={i} className="px-2 py-0.5 rounded bg-slate-950 text-[10px] text-slate-300 border border-slate-800">
+                                    {s}
+                                  </span>
+                                ))}
+                                {c.skills.length > 3 && <span className="text-[10px] text-slate-500">+{c.skills.length - 3} more</span>}
+                              </div>
+                            </td>
+                            <td className="py-4 px-4 text-slate-300">{c.experience}</td>
+                            <td className="py-4 px-4">
+                              <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${c.interviewStatus === 'Scheduled' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' :
+                                c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30 animate-pulse' :
+                                  c.interviewStatus === 'Completed' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
+                                    'bg-slate-800 text-slate-400'
+                                }`}>
+                                ● {c.interviewStatus}
+                              </span>
+                            </td>
+                            <td className="py-4 pl-4 text-right">
+                              <span className={`px-2.5 py-1 rounded-xl text-xs font-bold ${c.status === 'Offer Sent' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' :
+                                c.status === 'Rejected' ? 'bg-red-500/20 text-red-300 border border-red-500/40' :
+                                  c.status === 'Hold' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' :
+                                    'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40'
+                                }`}>
+                                {c.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
                     </tbody>
                   </table>
                 </div>
@@ -1070,7 +1209,6 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                                 </div>
                               </div>
                             </div>
-
                             <div className="flex items-center justify-between lg:justify-end gap-8 border-t lg:border-t-0 pt-4 lg:pt-0 border-slate-800 shrink-0">
                               <div className="text-center lg:text-right">
                                 <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Overall Match</p>
@@ -1079,7 +1217,26 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                                   {cand.matchScore}%
                                 </p>
                               </div>
-                              <div className="flex flex-col gap-2">
+                              <div className="flex flex-col gap-2 shrink-0">
+                                {cand.interviewStatus === 'Pending' && (
+                                  <button
+                                    onClick={() => handleScheduleInterview(cand)}
+                                    disabled={schedulingCandidateId === cand.id}
+                                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-purple-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center min-w-[125px]"
+                                  >
+                                    {schedulingCandidateId === cand.id ? (
+                                      <span className="flex items-center gap-1.5 justify-center">
+                                        <svg className="animate-spin h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        <span>Scheduling...</span>
+                                      </span>
+                                    ) : (
+                                      <span>Schedule Interview</span>
+                                    )}
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => {
                                     handleDecision(cand.id, 'Offer Sent');
@@ -1328,7 +1485,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
           {activeTab === 'interviews' && (
             <div className="space-y-6 animate-in fade-in duration-200">
               {/* Top Header Card */}
-              <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800/80 shadow-2xl flex items-center justify-between gap-4">
+              <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800/80 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-center space-x-3.5">
                   <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-purple-600/30 shrink-0">
                     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1344,6 +1501,32 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                       Monitor candidate scheduling states across autonomous AI Chat & Voice Studios.
                     </p>
                   </div>
+                </div>
+
+                {/* Role & Name Search Input */}
+                <div className="relative w-full md:w-80 shrink-0">
+                  <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 pointer-events-none">
+                    <svg className="w-4 h-4 text-slate-505" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="Search candidate by name or role..."
+                    value={interviewSearchQuery}
+                    onChange={(e) => setInterviewSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/20 transition-all font-semibold"
+                  />
+                  {interviewSearchQuery && (
+                    <button
+                      onClick={() => setInterviewSearchQuery('')}
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-500 hover:text-slate-300 cursor-pointer"
+                    >
+                      <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1379,9 +1562,20 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {candidates
                   .filter(c => {
-                    if (interviewFilter === 'all') return true;
-                    if (interviewFilter === 'In Progress') return c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress';
-                    return c.interviewStatus === interviewFilter;
+                    let matchesStatus = true;
+                    if (interviewFilter !== 'all') {
+                      if (interviewFilter === 'In Progress') {
+                        matchesStatus = c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress';
+                      } else {
+                        matchesStatus = c.interviewStatus === interviewFilter;
+                      }
+                    }
+                    let matchesSearch = true;
+                    if (interviewSearchQuery.trim() !== '') {
+                      const q = interviewSearchQuery.toLowerCase();
+                      matchesSearch = c.name.toLowerCase().includes(q) || (c.role || '').toLowerCase().includes(q);
+                    }
+                    return matchesStatus && matchesSearch;
                   })
                   .map((cand) => (
                     <div
@@ -1503,14 +1697,51 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                             )}
                           </div>
                         )}
+                        {cand.interviewStatus === 'Pending' && (
+                          <div className="pt-3 border-t border-slate-900">
+                            <button
+                              onClick={() => handleScheduleInterview(cand)}
+                              disabled={schedulingCandidateId === cand.id}
+                              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-purple-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer active:scale-95 flex items-center justify-center space-x-1.5 disabled:opacity-70 disabled:cursor-not-allowed"
+                            >
+                              {schedulingCandidateId === cand.id ? (
+                                <span className="flex items-center gap-1.5 justify-center">
+                                  <svg className="animate-spin h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                  </svg>
+                                  <span>Scheduling...</span>
+                                </span>
+                              ) : (
+                                <>
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                  </svg>
+                                  <span>Schedule Interview</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
 
                 {candidates.filter(c => {
-                  if (interviewFilter === 'all') return true;
-                  if (interviewFilter === 'In Progress') return c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress';
-                  return c.interviewStatus === interviewFilter;
+                  let matchesStatus = true;
+                  if (interviewFilter !== 'all') {
+                    if (interviewFilter === 'In Progress') {
+                      matchesStatus = c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress';
+                    } else {
+                      matchesStatus = c.interviewStatus === interviewFilter;
+                    }
+                  }
+                  let matchesSearch = true;
+                  if (interviewSearchQuery.trim() !== '') {
+                    const q = interviewSearchQuery.toLowerCase();
+                    matchesSearch = c.name.toLowerCase().includes(q) || (c.role || '').toLowerCase().includes(q);
+                  }
+                  return matchesStatus && matchesSearch;
                 }).length === 0 && (
                     <div className="col-span-full py-16 text-center text-slate-400 font-medium bg-slate-950/40 rounded-3xl border border-dashed border-slate-800">
                       No candidates found in <span className="font-bold text-purple-300">"{interviewFilter}"</span> interview status.
@@ -2385,6 +2616,35 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                     </div>
                   )}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Toast Notification */}
+          {toast.visible && (
+            <div className="fixed top-6 right-6 z-50 animate-in slide-in-from-top-5 fade-in duration-300">
+              <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl border backdrop-blur-xl shadow-2xl transition-all ${toast.type === 'success'
+                ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-200 shadow-emerald-950/20'
+                : 'bg-red-950/90 border-red-500/40 text-red-200 shadow-red-950/20'
+                }`}>
+                {toast.type === 'success' ? (
+                  <svg className="w-5 h-5 text-emerald-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5 text-red-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
+                <span className="text-xs font-semibold tracking-wide">{toast.message}</span>
+                <button
+                  onClick={() => setToast(prev => ({ ...prev, visible: false }))}
+                  className="ml-2 hover:text-white transition-colors cursor-pointer"
+                >
+                  <svg className="w-4 h-4 opacity-60 hover:opacity-100" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
               </div>
             </div>
           )}

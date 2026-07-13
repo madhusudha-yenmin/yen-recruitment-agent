@@ -101,7 +101,9 @@ def _extract_and_preprocess_pdf(pdf_bytes: bytes) -> Tuple[str, int]:
         extract_text_to_fp(io.BytesIO(pdf_bytes), output, laparams=LAParams())
         raw_text = output.getvalue()
         
-        pages = raw_text.split("\x0c")
+        # Split pages and clean empty pages / single-character line noise
+        pages = [p.strip() for p in raw_text.split("\x0c")]
+        pages = [p for p in pages if len(p.strip()) > 1]
         page_count = max(1, len(pages))
     except Exception as e:
         logger.error(f"pdfminer failed to open document: {e}")
@@ -169,8 +171,15 @@ def _extract_and_preprocess_pdf(pdf_bytes: bytes) -> Tuple[str, int]:
     # Normalize whitespaces
     processed_text = re.sub(r'[ \t]+', ' ', processed_text)
     processed_text = re.sub(r'\n{3,}', '\n\n', processed_text)
+    processed_text = processed_text.strip()
     
-    return processed_text.strip(), page_count
+    # Remove trailing single character line noise at the end of the document
+    lines = processed_text.splitlines()
+    while lines and len(lines[-1].strip()) <= 1:
+        lines.pop()
+    processed_text = "\n".join(lines).strip()
+    
+    return processed_text, page_count
 
 
 # ---------------------------------------------------------------------------
@@ -178,14 +187,26 @@ def _extract_and_preprocess_pdf(pdf_bytes: bytes) -> Tuple[str, int]:
 # ---------------------------------------------------------------------------
 
 def _extract_email(text: str) -> Optional[str]:
-    # Match explicitly up to TLD and stop to avoid merging issues with trailing headers
+    # 1. Match explicitly up to TLD and stop to avoid merging issues with trailing headers
     match = re.search(r"\b([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.(?:com|org|net|edu|gov|in|co|us|info|io|me|dev))\b", text)
     if match:
         return match.group(1)
+        
+    # 2. What if it's merged like "email@domain.comSkills" or "email@domain.comS"?
+    match_merged = re.search(r"\b([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.(?:com|org|net|edu|gov|in|co|us|info|io|me|dev))", text)
+    if match_merged:
+        return match_merged.group(1)
     
-    # Fallback to general email pattern
+    # 3. Fallback to general email pattern
     emails = re.findall(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,4}", text)
-    return emails[0] if emails else None
+    if emails:
+        email = emails[0]
+        # Clean any trailing 'S' or 's' appended due to merged layout text
+        for tld in ["com", "org", "net", "edu", "gov", "in", "co", "us", "info", "io", "me", "dev"]:
+            if email.endswith(tld + "S") or email.endswith(tld + "s"):
+                return email[:-1]
+        return email
+    return None
 
 
 def _extract_phone(text: str) -> Optional[str]:

@@ -1,16 +1,22 @@
 import uuid
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from pydantic import BaseModel
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from app.db.session import get_db
 from app.models.candidate import Candidate, Resume as ResumeModel, CandidateSkill
-from app.models.interview import AuditLog
+from app.models.interview import AuditLog, Interview
 from app.graphs.checkpointer import get_checkpointer
 from app.graphs.recruitment_flow import create_recruitment_graph
+
+
+class ConfirmAvailabilityRequest(BaseModel):
+    days: List[str]
+    time_slots: List[str]
+    timezone: str
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +113,11 @@ async def get_all_candidates(
 ) -> Dict[str, Any]:
     """Retrieves all candidates from the database for the HR Dashboard."""
     try:
-        stmt = select(Candidate).options(selectinload(Candidate.skills), selectinload(Candidate.interviews)).order_by(Candidate.created_at.desc())
+        stmt = select(Candidate).options(
+            selectinload(Candidate.skills), 
+            selectinload(Candidate.interviews),
+            selectinload(Candidate.resumes)
+        ).order_by(Candidate.created_at.desc())
         res = await db.execute(stmt)
         candidates = res.scalars().all()
         
@@ -117,10 +127,13 @@ async def get_all_candidates(
             
             # Check if candidate has actually selected/confirmed an interview date & time slot
             has_scheduled_interview = False
+            interview_date_str = "Awaiting slot"
             if hasattr(cand, "interviews") and cand.interviews:
                 for iv in cand.interviews:
                     if iv.scheduled_at is not None:
                         has_scheduled_interview = True
+                        # Format as YYYY-MM-DD @ HH:MM Timezone
+                        interview_date_str = iv.scheduled_at.strftime("%Y-%m-%d @ %I:%M %p UTC")
                         break
             
             # Per strict user requirement: candidate must stay in "Applied" (Candidates column of Kanban board)
@@ -140,8 +153,19 @@ async def get_all_candidates(
                 cand_status = status_map.get(cand.status, "Applied")
                 interview_status = "Pending"
             
-            # Estimate match score or use stored score if available
-            score = int(min(98, max(65, 95 - idx * 3)))
+            # Retrieve actual ATS score from parsed resume metadata if available
+            score = None
+            if cand.resumes:
+                latest_resume = cand.resumes[-1]
+                if latest_resume.parsed_metadata and "ats_score" in latest_resume.parsed_metadata:
+                    try:
+                        score = float(latest_resume.parsed_metadata["ats_score"])
+                    except Exception:
+                        pass
+            
+            if score is None:
+                # Fallback to estimated score only for sourced/LinkedIn search profiles that don't have resumes
+                score = float(int(min(98, max(65, 95 - idx * 3))))
             
             candidates_list.append({
                 "id": str(cand.id),
@@ -158,6 +182,7 @@ async def get_all_candidates(
                 "status": cand_status,
                 "recommendation": "strong-hire" if score >= 85 else ("hire" if score >= 75 else "no-hire"),
                 "interviewStatus": interview_status,
+                "interviewDate": interview_date_str,
                 "interviewMode": "AI Chat Studio"
             })
             
@@ -258,3 +283,219 @@ async def submit_recruiter_approval(session_id: str, decision: ApprovalDecisionR
         "decision_applied": decision.decision,
         "final_state": updated_state.values if updated_state else {}
     }
+
+
+from app.api.v1.auth import get_current_active_user
+from app.models.user import User
+
+@router.get("/candidate/profile", status_code=status.HTTP_200_OK)
+async def get_candidate_profile(
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+) -> Dict[str, Any]:
+    """Retrieves the candidate profile details matching the logged-in candidate user's email."""
+    try:
+        stmt = select(Candidate).options(
+            selectinload(Candidate.skills),
+            selectinload(Candidate.resumes),
+            selectinload(Candidate.interviews)
+        ).where(Candidate.email == current_user.email)
+        res = await db.execute(stmt)
+        candidate = res.scalar_one_or_none()
+        
+        if not candidate:
+            # Fallback mock if they registered directly but have no parsed candidate record
+            return {
+                "status": "success",
+                "profile": {
+                    "name": current_user.name,
+                    "email": current_user.email,
+                    "phone": "",
+                    "experience": 0.0,
+                    "status": "new",
+                    "role": "AI Specialist",
+                    "skills": ["Python", "FastAPI"],
+                    "interviewDate": "Awaiting slot"
+                }
+            }
+            
+        skills = [s.skill_name for s in candidate.skills] if candidate.skills else ["Python", "FastAPI"]
+        role = candidate.current_company or "AI Specialist"
+        
+        interview_date_str = "Awaiting slot"
+        if candidate.interviews:
+            for iv in candidate.interviews:
+                if iv.scheduled_at is not None:
+                    interview_date_str = iv.scheduled_at.strftime("%Y-%m-%d @ %I:%M %p UTC")
+                    break
+        
+        return {
+            "status": "success",
+            "profile": {
+                "id": str(candidate.id),
+                "name": candidate.name or current_user.name,
+                "email": candidate.email,
+                "phone": candidate.phone or "",
+                "experience": candidate.experience or 0.0,
+                "status": candidate.status,
+                "role": role,
+                "skills": skills,
+                "interviewDate": interview_date_str
+            }
+        }
+    except Exception as exc:
+        logger.error(f"Error fetching candidate profile: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to load candidate profile.")
+
+
+from datetime import datetime, timedelta, timezone as dt_timezone
+from app.models.job import Job
+from app.models.user import Company
+
+@router.post("/candidate/availability", status_code=status.HTTP_200_OK)
+async def confirm_candidate_availability(
+    req: ConfirmAvailabilityRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+) -> Dict[str, Any]:
+    """Saves candidate availability preferences, schedules/updates their Interview record, and marks status as Pending HR Review (Scheduled column)."""
+    try:
+        stmt = select(Candidate).options(
+            selectinload(Candidate.interviews)
+        ).where(Candidate.email == current_user.email)
+        res = await db.execute(stmt)
+        candidate = res.scalar_one_or_none()
+        
+        if not candidate:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Candidate record not found.")
+
+        # Find first job to link the interview to
+        stmt_job = select(Job)
+        res_job = await db.execute(stmt_job)
+        job = res_job.scalars().first()
+        if not job:
+            # Create a default company and job to satisfy foreign keys
+            stmt_comp = select(Company)
+            res_comp = await db.execute(stmt_comp)
+            comp = res_comp.scalars().first()
+            if not comp:
+                comp = Company(name="YEN AI")
+                db.add(comp)
+                await db.flush()
+            job = Job(
+                company_id=comp.id,
+                title="AI Specialist",
+                description="AI Specialist role",
+                status="open"
+            )
+            db.add(job)
+            await db.flush()
+
+        # Parse preferred days and calculate nearest date
+        DAY_MAP = {"Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3, "Friday": 4, "Saturday": 5, "Sunday": 6}
+        now = datetime.now(dt_timezone.utc)
+        min_delta = 1
+        
+        if req.days:
+            day_indices = [DAY_MAP[d] for d in req.days if d in DAY_MAP]
+            if day_indices:
+                today_idx = now.weekday()
+                deltas = [(idx - today_idx) % 7 for idx in day_indices]
+                min_delta = min(deltas)
+                if min_delta == 0:  # If selected day is today, schedule for next week to be safe or keep today
+                    min_delta = 7
+
+        hour = 9
+        if req.time_slots:
+            first_slot = req.time_slots[0].lower()
+            if "afternoon" in first_slot:
+                hour = 13
+            elif "evening" in first_slot:
+                hour = 18
+
+        scheduled_date = now + timedelta(days=min_delta)
+        scheduled_at = datetime(
+            year=scheduled_date.year,
+            month=scheduled_date.month,
+            day=scheduled_date.day,
+            hour=hour,
+            minute=0,
+            second=0,
+            tzinfo=dt_timezone.utc
+        )
+
+        # Upsert interview record
+        interview = None
+        if candidate.interviews:
+            interview = candidate.interviews[0]
+            interview.scheduled_at = scheduled_at
+            interview.job_id = job.id
+            interview.status = "scheduled"
+        else:
+            interview = Interview(
+                candidate_id=candidate.id,
+                job_id=job.id,
+                scheduled_at=scheduled_at,
+                mode="ai-chat",
+                status="scheduled"
+            )
+            db.add(interview)
+
+        # Per strict user requirement: candidate is listed under "Pending HR Review" (Scheduled column)
+        # once their interview date is selected (scheduled_at is not None).
+        candidate.status = "shortlisted"
+        await db.commit()
+        
+        # Broadcast candidates update event to notify all connected HR dashboards in real-time
+        try:
+            await manager.broadcast({"event": "candidates_updated"})
+        except Exception as ws_err:
+            logger.error(f"WebSocket broadcast failed: {ws_err}")
+        
+        return {
+            "status": "success",
+            "message": "Availability preferences successfully saved and interview slot confirmed.",
+            "scheduledAt": scheduled_at.strftime("%Y-%m-%d @ %I:%M %p UTC")
+        }
+    except Exception as exc:
+        await db.rollback()
+        logger.error(f"Error saving candidate availability: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to save availability preferences.")
+
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    def connect(self, websocket: WebSocket):
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: dict):
+        for connection in self.active_connections:
+            try:
+                await connection.send_json(message)
+            except Exception:
+                pass
+
+
+manager = ConnectionManager()
+
+
+@router.websocket("/ws")
+@router.websocket("/ws/")
+async def websocket_endpoint(websocket: WebSocket):
+    """WebSocket endpoint for broadcasting real-time candidate status updates to HR Dashboards."""
+    await websocket.accept()
+    manager.connect(websocket)
+    try:
+        while True:
+            # Keep the socket connection open and listen for client heartbeats
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+    except Exception:
+        manager.disconnect(websocket)

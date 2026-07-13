@@ -11,23 +11,31 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // Check if landing via an email link (has email query param)
+    const params = new URLSearchParams(window.location.search);
+    const emailParam = params.get('email');
+    if (emailParam) {
+      // Force logout of any previous session to show the login screen
+      localStorage.removeItem('yen_user_session');
+      localStorage.removeItem('yen_access_token');
+      setUser(null);
+      setIsLoading(false);
+      return;
+    }
+
     // Check if user session exists in localStorage for persistence across page refreshes
     const savedUser = localStorage.getItem('yen_user_session');
     if (savedUser) {
       try {
         const parsed = JSON.parse(savedUser);
-        setTimeout(() => {
-          setUser(parsed);
-          setIsLoading(false);
-        }, 0);
+        setUser(parsed);
+        setIsLoading(false);
         return;
       } catch (e) {
         console.error('Failed to parse user session', e);
       }
     }
-    setTimeout(() => {
-      setIsLoading(false);
-    }, 0);
+    setIsLoading(false);
   }, []);
 
   const handleLogin = (newUser: User) => {

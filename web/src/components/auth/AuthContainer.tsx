@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, UserRole, AuthView } from '../../types';
 import { SignIn } from './SignIn';
 import { SignUp } from './SignUp';
@@ -14,6 +14,14 @@ interface AuthContainerProps {
 export const AuthContainer: React.FC<AuthContainerProps> = ({ onLogin }) => {
   const [view, setView] = useState<AuthView>('signin');
   const [role, setRole] = useState<UserRole>('hr');
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const emailParam = params.get('email');
+    if (emailParam) {
+      setRole('candidate');
+    }
+  }, []);
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center p-4 relative overflow-hidden bg-slate-950 selection:bg-indigo-500 selection:text-white">

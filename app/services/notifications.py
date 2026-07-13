@@ -1,8 +1,114 @@
 import logging
 from typing import Dict, Any, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from fastapi_mail import FastMail, MessageSchema, ConnectionConfig, MessageType
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Smart defaults for standard secure mail ports
+mail_starttls = settings.MAIL_STARTTLS
+mail_ssl_tls = settings.MAIL_SSL_TLS
+
+if settings.MAIL_PORT == 587:
+    mail_starttls = True
+elif settings.MAIL_PORT == 465:
+    mail_ssl_tls = True
+
+import os
+
+# Spam Prevention Guard: If authenticated username is Gmail, MAIL_FROM must match it exactly.
+# Mismatched "From" header and authenticated SMTP username triggers Gmail spam/phishing filters.
+mail_from = settings.MAIL_FROM
+if settings.MAIL_USERNAME and "@gmail.com" in settings.MAIL_USERNAME.lower():
+    mail_from = settings.MAIL_USERNAME
+
+conf = ConnectionConfig(
+    MAIL_USERNAME=settings.MAIL_USERNAME,
+    MAIL_PASSWORD=settings.MAIL_PASSWORD,
+    MAIL_FROM=mail_from,
+    MAIL_PORT=settings.MAIL_PORT,
+    MAIL_SERVER=settings.MAIL_SERVER,
+    MAIL_FROM_NAME=settings.MAIL_FROM_NAME,
+    MAIL_STARTTLS=mail_starttls,
+    MAIL_SSL_TLS=mail_ssl_tls,
+    USE_CREDENTIALS=True if settings.MAIL_USERNAME else False,
+    VALIDATE_CERTS=False
+)
+
+
+from string import Template
+
+async def send_scheduling_email(
+    candidate_name: str,
+    candidate_email: str,
+    job_role: str,
+    otp_password: str,
+    deadline: str = None,
+    company_name: str = "YEN AI",
+    interview_link: str = "http://localhost:3000/"
+):
+    if not deadline:
+        # Default deadline: 3 days from now
+        deadline = (datetime.now() + timedelta(days=3)).strftime("%B %d, %Y")
+        
+    subject = "Interview Schedule - YEN AI"
+    
+    # Load HTML template from the email_templates folder
+    template_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "email_templates", "scheduling_interview.html"))
+    html_content = ""
+    
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            template_str = f.read()
+        
+        # Populate template placeholders using string.Template to avoid CSS brace formatting KeyError issues
+        t = Template(template_str)
+        html_content = t.safe_substitute(
+            candidate_name=candidate_name,
+            job_role=job_role,
+            company_name=company_name,
+            deadline=deadline,
+            interview_link=interview_link,
+            candidate_email=candidate_email,
+            otp_password=otp_password
+        )
+    except Exception as template_err:
+        logger.error(f"Failed to load or format email HTML template: {template_err}")
+        # Fallback raw HTML body
+        html_content = f"""
+        <html>
+        <body>
+            <h2>Hi {candidate_name},</h2>
+            <p>Your application for the {job_role} position at {company_name} has been shortlisted.</p>
+            <p>Please access the portal to select your preferred date and time.</p>
+            <p><a href="{interview_link}">Candidate Portal</a></p>
+            <p>Login Email: {candidate_email}</p>
+            <p>Verification Code: {otp_password}</p>
+            <p>Please complete your availability submission by {deadline}.</p>
+        </body>
+        </html>
+        """
+
+    message = MessageSchema(
+        subject=subject,
+        recipients=[candidate_email],
+        body=html_content,
+        subtype=MessageType.html
+    )
+
+    fm = FastMail(conf)
+    try:
+        await fm.send_message(message)
+        logger.info(f"Successfully sent scheduling email to {candidate_email}")
+    except Exception as e:
+        logger.error(f"Failed to send scheduling email to {candidate_email} via SMTP: {e}")
+        # Print to console for visibility
+        print(f"\n--- [FASTAPI-MAIL SEND FAILED (SMTP Offline)] ---")
+        print(f"To:      {candidate_email}")
+        print(f"Subject: {subject}")
+        print(f"Body (HTML Preview):\n{html_content[:400]}...")
+        print(f"-------------------------------------------------\n")
 
 
 def utc_now_iso() -> str:

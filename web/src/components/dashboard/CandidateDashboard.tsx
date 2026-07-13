@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, CandidateTab } from '../../types';
 
 interface CandidateDashboardProps {
@@ -17,29 +17,88 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
   const [selectedDays, setSelectedDays] = useState<string[]>(user.availability?.days || ['Monday', 'Wednesday', 'Friday']);
   const [selectedSlots, setSelectedSlots] = useState<string[]>(user.availability?.timeSlots || ['Morning (09:00 - 12:00 IST)', 'Afternoon (13:00 - 17:00 IST)']);
   const [timezone, setTimezone] = useState<string>(user.availability?.timezone || 'IST (UTC+5:30) - Indian Standard Time');
-  const [isAvailabilitySaved, setIsAvailabilitySaved] = useState<boolean>(user.availability?.isConfirmed || true);
+  const [isAvailabilitySaved, setIsAvailabilitySaved] = useState<boolean>(user.availability?.isConfirmed || false);
+
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error'; visible: boolean }>({
+    message: '',
+    type: 'success',
+    visible: false
+  });
+
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type, visible: true });
+    setTimeout(() => setToast(prev => ({ ...prev, visible: false })), 4000);
+  };
+
+  const [profile, setProfile] = useState<{
+    name: string;
+    email: string;
+    phone: string;
+    experience: number;
+    status: string;
+    role: string;
+    skills: string[];
+  } | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(true);
 
   // AI Interview Studio State
   const [messages, setMessages] = useState<{ sender: 'ai' | 'candidate'; text: string; timestamp: string }[]>([
     {
       sender: 'ai',
-      text: "Hello Alice! I am the YEN AI Interview Agent. Congratulations on progressing to the technical interview stage for the Senior AI Backend Engineer role! Today, we will explore your technical experience with Python, FastAPI, and LangGraph. Are you ready to begin your assessment?",
+      text: "Hello! I am the YEN AI Interview Agent. Congratulations on progressing to the technical interview stage! Today, we will explore your technical experience. Are you ready to begin your assessment?",
       timestamp: "10:00 AM"
-    },
-    {
-      sender: 'candidate',
-      text: "Hello! Thank you so much. Yes, I am ready to begin. I've been building multi-agent systems and asynchronous backend services for over 6 years now.",
-      timestamp: "10:01 AM"
-    },
-    {
-      sender: 'ai',
-      text: "Excellent! Let's dive into our first technical question: When designing a distributed multi-agent architecture using LangGraph and PostgreSQL checkpointers, how do you handle state persistence and failure recovery if an agent node crashes mid-execution?",
-      timestamp: "10:02 AM"
     }
   ]);
   const [currentInput, setCurrentInput] = useState("");
   const [isSynthesizing, setIsSynthesizing] = useState(false);
   const [interviewScore, setInterviewScore] = useState<number | null>(null);
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const token = localStorage.getItem('yen_access_token');
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+        const res = await fetch(`${apiUrl}/api/v1/recruitment/candidate/profile`, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status === 'success' && data.profile) {
+            setProfile(data.profile);
+            
+            // Check if availability has been confirmed in database
+            if (data.profile.interviewDate && data.profile.interviewDate !== "Awaiting slot") {
+              setIsAvailabilitySaved(true);
+            } else {
+              setIsAvailabilitySaved(false);
+            }
+            
+            // Populate dynamic welcome message based on parsed candidate details
+            const name = data.profile.name || user.name;
+            const role = data.profile.role || "AI Specialist";
+            const skills = (data.profile.skills && data.profile.skills.length > 0)
+              ? data.profile.skills.slice(0, 3).join(', ')
+              : "Python, FastAPI, and LangGraph";
+              
+            setMessages([
+              {
+                sender: 'ai',
+                text: `Hello ${name}! I am the YEN AI Interview Agent. Congratulations on progressing to the technical interview stage for the ${role} role! Today, we will explore your technical experience with ${skills}. Are you ready to begin your assessment?`,
+                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              }
+            ]);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load candidate profile:", err);
+      } finally {
+        setLoadingProfile(false);
+      }
+    };
+    fetchProfile();
+  }, [user.name]);
 
   const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
   const timeWindows = [
@@ -58,10 +117,34 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
     setSelectedSlots(prev => prev.includes(slot) ? prev.filter(s => s !== slot) : [...prev, slot]);
   };
 
-  const handleSaveAvailability = (e: React.FormEvent) => {
+  const handleSaveAvailability = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsAvailabilitySaved(true);
-    alert("✓ Availability Preferences Saved! Your AI Studio session has been confirmed & synced with the Interview Agent.");
+    try {
+      const token = localStorage.getItem('yen_access_token');
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+      const res = await fetch(`${apiUrl}/api/v1/recruitment/candidate/availability`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          days: selectedDays,
+          time_slots: selectedSlots,
+          timezone: timezone
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.status === 'success') {
+        setIsAvailabilitySaved(true);
+        showToast("✓ Availability Preferences Saved! Your slot is confirmed & synced with HR.", "success");
+      } else {
+        showToast(data.detail || "Failed to save availability preferences.", "error");
+      }
+    } catch (err) {
+      console.error(err);
+      showToast("Connection error — could not sync availability with server.", "error");
+    }
   };
 
   const handleSendMessage = (e: React.FormEvent) => {
@@ -166,8 +249,8 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
               />
               {!isSidebarCollapsed && (
                 <div className="text-left truncate">
-                  <p className="text-xs font-bold text-slate-200 truncate">{user.name}</p>
-                  <p className="text-[10px] text-purple-400 truncate">Senior AI Backend Engineer</p>
+                  <p className="text-xs font-bold text-slate-200 truncate">{profile?.name || user.name}</p>
+                  <p className="text-[10px] text-purple-400 truncate">{profile?.role || "Senior AI Backend Engineer"}</p>
                 </div>
               )}
             </div>
@@ -198,7 +281,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
           </div>
 
           <div className="flex items-center space-x-4">
-            <span className="text-xs text-slate-400 hidden sm:inline">Active Application: <strong className="text-purple-300">Senior AI Backend Engineer</strong></span>
+            <span className="text-xs text-slate-400 hidden sm:inline">Active Application: <strong className="text-purple-300">{profile?.role || "Senior AI Backend Engineer"}</strong></span>
             <button
               onClick={() => setActiveTab('studio')}
               className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-xs shadow-md shadow-purple-600/20 transition-all cursor-pointer flex items-center space-x-1.5"
@@ -227,26 +310,26 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                   />
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2.5">
-                      <h2 className="text-2xl font-black text-white tracking-tight">{user.name}</h2>
+                      <h2 className="text-2xl font-black text-white tracking-tight">{profile?.name || user.name}</h2>
                       <span className="px-3 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/30 flex items-center space-x-1">
                         <span>✓ Verified AI Specialist</span>
                       </span>
                       <span className="px-3 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-xs font-bold border border-purple-500/30">
-                        Job Title: Senior AI Backend Engineer
+                        Job Title: {profile?.role || "Senior AI Backend Engineer"}
                       </span>
                     </div>
 
                     <p className="text-xs font-medium text-slate-300 flex flex-wrap items-center gap-2">
-                      <span>📧 {user.email}</span>
+                      <span>📧 {profile?.email || user.email}</span>
                       <span className="text-slate-600">•</span>
-                      <span>⏱️ {user.experienceYears || 6}+ Years Experience</span>
+                      <span>⏱️ {profile?.experience !== undefined ? profile.experience : 6}+ Years Experience</span>
                       <span className="text-slate-600">•</span>
                       <span>📍 Remote (IST / UTC+5:30)</span>
                     </p>
 
                     <div className="flex flex-wrap items-center gap-1.5 pt-1">
                       <span className="text-[11px] text-slate-400 font-bold mr-1">Verified Tech Stack:</span>
-                      {(user.techStack || ['Python Asyncio', 'FastAPI', 'PostgreSQL', 'Docker', 'LangGraph', 'PyTorch']).map((tech, i) => (
+                      {(profile?.skills && profile.skills.length > 0 ? profile.skills : ['Python Asyncio', 'FastAPI', 'PostgreSQL', 'Docker', 'LangGraph', 'PyTorch']).map((tech, i) => (
                         <span key={i} className="px-2.5 py-0.5 rounded-lg bg-slate-950/90 border border-slate-800 text-xs font-semibold text-purple-300">
                           {tech}
                         </span>
@@ -282,7 +365,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                         <span>🚀 Application & Interview Progress</span>
                       </h3>
                       <p className="text-xs text-slate-400 mt-0.5">
-                        Job Title: <strong className="text-purple-300">Senior AI Backend Engineer</strong>
+                        Job Title: <strong className="text-purple-300">{profile?.role || "Senior AI Backend Engineer"}</strong>
                       </p>
                     </div>
                     <span className="px-3 py-1 rounded-xl bg-purple-500/15 text-purple-300 text-xs font-mono font-bold border border-purple-500/30 self-start sm:self-center">
@@ -540,7 +623,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                     <div key={idx} className={`flex flex-col ${m.sender === 'candidate' ? 'items-end' : 'items-start'} space-y-1`}>
                       <div className="flex items-center space-x-2 px-1">
                         <span className="text-[10px] font-bold uppercase text-slate-400">
-                          {m.sender === 'ai' ? '🤖 YEN Interview Agent' : '👤 Alice Smith (Candidate)'}
+                          {m.sender === 'ai' ? '🤖 YEN Interview Agent' : `👤 ${profile?.name || user.name} (Candidate)`}
                         </span>
                         <span className="text-[10px] text-slate-500">{m.timestamp}</span>
                       </div>
@@ -597,6 +680,32 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
 
         </div>
       </main>
+
+      {/* Dynamic Toast Notification Panel */}
+      {toast.visible && (
+        <div className="fixed top-6 right-6 z-50 animate-in fade-in slide-in-from-top-6 duration-300 pointer-events-none">
+          <div className={`p-4 rounded-2xl backdrop-blur-xl border shadow-2xl flex items-center space-x-3.5 max-w-sm ${
+            toast.type === 'success'
+              ? 'bg-emerald-950/80 border-emerald-500/30 text-emerald-200'
+              : 'bg-red-950/80 border-red-500/30 text-red-200'
+          }`}>
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+              toast.type === 'success' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'
+            }`}>
+              {toast.type === 'success' ? (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              )}
+            </div>
+            <div className="text-xs font-bold leading-relaxed">{toast.message}</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
