@@ -38,6 +38,9 @@ const formatSchedule = (scheduleStr?: string) => {
 };
 
 export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => {
+  const todayDateObj = new Date();
+  const todayDay = (todayDateObj.getFullYear() === 2026 && todayDateObj.getMonth() === 6) ? todayDateObj.getDate() : 13;
+
   const [activeTab, setActiveTab] = useState<HRTab>('overview');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const leaderboardRef = useRef<HTMLDivElement>(null);
@@ -335,40 +338,85 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
       const data = await response.json();
       setParsedResumes(data);
 
-      // Automatically add parsed candidates to the candidates pool and re-rank
-      setCandidates(prev => {
-        let updated = [...prev];
-        data.forEach((res: any) => {
-          const isAlreadyAdded = updated.some(c => c.email === res.parsed.email || c.name === res.parsed.name);
-          if (!isAlreadyAdded) {
-            const newCandidate: CandidateMatch = {
-              id: res.candidate_id,
-              name: res.parsed.name || "Unknown Candidate",
-              email: res.parsed.email || "no-email@example.com",
-              linkedinUrl: "",
-              matchScore: Math.round(res.ats_score),
-              ranking: updated.length + 1,
-              skills: res.parsed.skills.length > 0 ? res.parsed.skills : ["Parsed Candidate"],
-              experience: `${res.parsed.experience_years.toFixed(1)} Years`,
-              salary: "Negotiable",
-              location: "Uploaded Resume",
-              status: 'Pending HR Review',
-              recommendation: res.recommendation,
-              interviewStatus: 'Pending',
-              interviewMode: 'AI Chat Studio'
-            };
-            updated.push(newCandidate);
-          }
-        });
+      // Build the list of NEW candidates synchronously from API data (before setCandidates,
+      // because the setCandidates updater closure runs asynchronously and may be batched by React)
+      const existingEmails = new Set(candidates.map(c => c.email));
+      const existingNames  = new Set(candidates.map(c => c.name));
 
-        // Re-rank based on matchScore descending
+      const newlyAddedCandidates: CandidateMatch[] = data
+        .filter((res: any) => !existingEmails.has(res.parsed.email) && !existingNames.has(res.parsed.name))
+        .map((res: any): CandidateMatch => ({
+          id: res.candidate_id,
+          name: res.parsed.name || 'Unknown Candidate',
+          email: res.parsed.email || 'no-email@example.com',
+          linkedinUrl: '',
+          matchScore: Math.round(res.ats_score),
+          ranking: 0,
+          skills: res.parsed.skills.length > 0 ? res.parsed.skills : ['Parsed Candidate'],
+          experience: `${res.parsed.experience_years.toFixed(1)} Years`,
+          salary: 'Negotiable',
+          location: 'Uploaded Resume',
+          status: 'Pending HR Review',
+          recommendation: res.recommendation,
+          interviewStatus: 'Pending',
+          interviewMode: 'AI Chat Studio'
+        }));
+
+      // Update candidate pool in state (re-rank)
+      setCandidates(prev => {
+        const updated = [...prev];
+        newlyAddedCandidates.forEach(c => {
+          const alreadyIn = updated.some(e => e.email === c.email || e.name === c.name);
+          if (!alreadyIn) updated.push(c);
+        });
         return updated
           .sort((a, b) => b.matchScore - a.matchScore)
-          .map((c, index) => ({
-            ...c,
-            ranking: index + 1
-          }));
+          .map((c, index) => ({ ...c, ranking: index + 1 }));
       });
+
+      // Auto-send scheduling email ONLY for candidates with ATS score > 50%
+      const autoEmailCandidates = newlyAddedCandidates.filter(c => c.matchScore > 50);
+      const belowThresholdCandidates = newlyAddedCandidates.filter(c => c.matchScore <= 50);
+
+      // Log what emails are being sent for transparency
+      console.log('[AutoEmail] Qualified (>50%):', autoEmailCandidates.map(c => `${c.name} <${c.email}> ${c.matchScore}%`));
+      console.log('[AutoEmail] Below threshold (<=50%):', belowThresholdCandidates.map(c => `${c.name} <${c.email}> ${c.matchScore}%`));
+
+      if (autoEmailCandidates.length > 0) {
+        setLogs(prev => [
+          {
+            id: `log-${Date.now()}-auto-email`,
+            timestamp: new Date().toLocaleTimeString(),
+            agentName: 'RecruitmentOrchestrator',
+            action: `Auto-dispatching interview invitation emails to ${autoEmailCandidates.length} qualified candidate(s) (ATS > 50%). ${belowThresholdCandidates.length > 0 ? `${belowThresholdCandidates.length} candidate(s) below 50% require manual scheduling.` : ''}`,
+            latency: '0ms',
+            tokens: 0,
+            cost: '$0.00',
+            status: 'success'
+          },
+          ...prev
+        ]);
+        // Fire emails in parallel for qualified candidates only
+        autoEmailCandidates.forEach(cand => {
+          handleScheduleInterview(cand);
+        });
+      }
+
+      if (belowThresholdCandidates.length > 0) {
+        setLogs(prev => [
+          {
+            id: `log-${Date.now()}-below-threshold`,
+            timestamp: new Date().toLocaleTimeString(),
+            agentName: 'RecruitmentOrchestrator',
+            action: `${belowThresholdCandidates.length} candidate(s) have ATS score ≤ 50% (${belowThresholdCandidates.map(c => `${c.name}: ${c.matchScore}%`).join(', ')}). Manual scheduling available via Interview Status tab.`,
+            latency: '0ms',
+            tokens: 0,
+            cost: '$0.00',
+            status: 'warning'
+          },
+          ...prev
+        ]);
+      }
 
       setLogs(prev => [
         {
@@ -584,6 +632,45 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
       setCandidates(newCandidates);
       setCurrentPage(1);
       setLeaderboardPage(1);
+
+      // Auto-send scheduling email ONLY for candidates with ATS/match score > 50% (after ranking)
+      const autoEmailSerper = newCandidates.filter(c => c.matchScore > 50);
+      const belowThresholdSerper = newCandidates.filter(c => c.matchScore <= 50);
+
+      if (autoEmailSerper.length > 0) {
+        setLogs(prev => [
+          {
+            id: `log-${Date.now()}-auto-email`,
+            timestamp: new Date().toLocaleTimeString(),
+            agentName: 'RecruitmentOrchestrator',
+            action: `Auto-dispatching interview invitation emails to ${autoEmailSerper.length} qualified sourced candidate(s) (score > 50%). ${belowThresholdSerper.length > 0 ? `${belowThresholdSerper.length} candidate(s) below 50% require manual scheduling.` : ''}`,
+            latency: '0ms',
+            tokens: 0,
+            cost: '$0.00',
+            status: 'success'
+          },
+          ...prev
+        ]);
+        autoEmailSerper.forEach(cand => {
+          handleScheduleInterview(cand);
+        });
+      }
+
+      if (belowThresholdSerper.length > 0) {
+        setLogs(prev => [
+          {
+            id: `log-${Date.now()}-below-threshold`,
+            timestamp: new Date().toLocaleTimeString(),
+            agentName: 'RecruitmentOrchestrator',
+            action: `${belowThresholdSerper.length} sourced candidate(s) have score ≤ 50% (${belowThresholdSerper.map(c => `${c.name}: ${c.matchScore}%`).join(', ')}). Manual scheduling available via Interview Status tab.`,
+            latency: '0ms',
+            tokens: 0,
+            cost: '$0.00',
+            status: 'warning'
+          },
+          ...prev
+        ]);
+      }
 
       // Scroll to leaderboard after a short delay to let the DOM update
       setTimeout(() => {
@@ -1708,14 +1795,24 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                           const sched = formatSchedule(cand.interviewDate);
                           return (
                             <>
-                              <div className="flex items-center justify-between text-slate-300 border-t border-slate-900 pt-2.5">
-                                <span className="text-slate-400 font-medium flex items-center gap-1.5 shrink-0">
+                              <div className="flex items-start justify-between text-slate-300 border-t border-slate-900 pt-2.5">
+                                <span className="text-slate-400 font-medium flex items-center gap-1.5 shrink-0 pt-0.5">
                                   <span>📅</span>
                                   <span>Date:</span>
                                 </span>
-                                <span className="font-mono font-bold text-purple-300 bg-purple-500/10 px-2.5 py-0.5 rounded-lg border border-purple-500/20 text-xs">
-                                  {sched.date}
-                                </span>
+                                {sched.date.includes(',') ? (
+                                  <div className="flex flex-col items-end gap-1.5">
+                                    {sched.date.split(',').map((d, dIdx) => (
+                                      <span key={dIdx} className="font-mono font-bold text-purple-300 bg-purple-500/10 px-2.5 py-0.5 rounded-lg border border-purple-500/20 text-[10px]">
+                                        {d.trim()}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="font-mono font-bold text-purple-300 bg-purple-500/10 px-2.5 py-0.5 rounded-lg border border-purple-500/20 text-xs">
+                                    {sched.date}
+                                  </span>
+                                )}
                               </div>
                               {sched.time && sched.time !== '-' && (
                                 <div className="flex items-center justify-between text-slate-300 border-t border-slate-900/60 pt-2.5">
@@ -1786,29 +1883,72 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                           </div>
                         )}
                         {cand.interviewStatus === 'Pending' && (
-                          <div className="pt-3 border-t border-slate-900">
-                            <button
-                              onClick={() => handleScheduleInterview(cand)}
-                              disabled={schedulingCandidateId === cand.id}
-                              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-purple-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer active:scale-95 flex items-center justify-center space-x-1.5 disabled:opacity-70 disabled:cursor-not-allowed"
-                            >
-                              {schedulingCandidateId === cand.id ? (
-                                <span className="flex items-center gap-1.5 justify-center">
-                                  <svg className="animate-spin h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          <div className="pt-3 border-t border-slate-900 space-y-2">
+                            {cand.matchScore > 50 ? (
+                              // ATS > 50% → email was auto-sent; show badge + re-send fallback
+                              <>
+                                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                                  <svg className="w-3.5 h-3.5 text-emerald-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                                   </svg>
-                                  <span>Scheduling...</span>
-                                </span>
-                              ) : (
-                                <>
-                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                  <span className="text-[10px] font-semibold text-emerald-400">Invitation email auto-sent (ATS &gt; 50%)</span>
+                                </div>
+                                <button
+                                  onClick={() => handleScheduleInterview(cand)}
+                                  disabled={schedulingCandidateId === cand.id}
+                                  className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-purple-500/50 text-slate-300 hover:text-white font-semibold text-xs transition-all cursor-pointer active:scale-95 flex items-center justify-center space-x-1.5 disabled:opacity-70 disabled:cursor-not-allowed"
+                                >
+                                  {schedulingCandidateId === cand.id ? (
+                                    <span className="flex items-center gap-1.5 justify-center">
+                                      <svg className="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                      </svg>
+                                      <span>Sending...</span>
+                                    </span>
+                                  ) : (
+                                    <>
+                                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                      </svg>
+                                      <span>Re-send Invitation</span>
+                                    </>
+                                  )}
+                                </button>
+                              </>
+                            ) : (
+                              // ATS ≤ 50% → manual scheduling required
+                              <>
+                                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20">
+                                  <svg className="w-3.5 h-3.5 text-amber-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
                                   </svg>
-                                  <span>Schedule Interview</span>
-                                </>
-                              )}
-                            </button>
+                                  <span className="text-[10px] font-semibold text-amber-400">ATS ≤ 50% — manual review needed</span>
+                                </div>
+                                <button
+                                  onClick={() => handleScheduleInterview(cand)}
+                                  disabled={schedulingCandidateId === cand.id}
+                                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer active:scale-95 flex items-center justify-center space-x-1.5 disabled:opacity-70 disabled:cursor-not-allowed"
+                                >
+                                  {schedulingCandidateId === cand.id ? (
+                                    <span className="flex items-center gap-1.5 justify-center">
+                                      <svg className="animate-spin h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                      </svg>
+                                      <span>Scheduling...</span>
+                                    </span>
+                                  ) : (
+                                    <>
+                                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                      </svg>
+                                      <span>Schedule Interview</span>
+                                    </>
+                                  )}
+                                </button>
+                              </>
+                            )}
                           </div>
                         )}
                       </div>
@@ -1932,11 +2072,13 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                     <div className="min-h-[85px] rounded-2xl bg-slate-950/20 border border-slate-900/40" />
 
                     {Array.from({ length: 31 }, (_, i) => i + 1).map((dayNum) => {
-                      const isPast = dayNum < 10;
-                      const isToday = dayNum === 10;
+                      const isPast = dayNum < todayDay;
+                      const isToday = dayNum === todayDay;
                       const dayStr = `July ${dayNum < 10 ? '0' + dayNum : dayNum}`;
+                      const matchDateStr = `2026-07-${dayNum < 10 ? '0' + dayNum : dayNum}`;
                       const dayCandidates = isPast ? [] : candidates.filter((c) => {
-                        if (!c.interviewDate || !c.interviewDate.includes(dayStr)) return false;
+                        if (!c.interviewDate) return false;
+                        if (!c.interviewDate.includes(dayStr) && !c.interviewDate.includes(matchDateStr)) return false;
                         if (calendarFilter === 'all') return true;
                         if (calendarFilter === 'In Progress') return c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress';
                         return c.interviewStatus === calendarFilter;
@@ -1994,7 +2136,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                   <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                     <div>
                       <h3 className="text-sm font-extrabold text-white uppercase tracking-wider">
-                        {selectedCalendarDay !== null ? `July ${selectedCalendarDay}, 2026` : 'Today & Upcoming (July 10+)'}
+                        {selectedCalendarDay !== null ? `July ${selectedCalendarDay}, 2026` : `Today & Upcoming (July ${todayDay}+)`}
                       </h3>
                       <p className="text-[11px] text-slate-400 mt-0.5">
                         {selectedCalendarDay !== null ? 'Sessions on selected date' : `Showing active & upcoming (${calendarFilter})`}
@@ -2015,15 +2157,26 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                     {(() => {
                       const filteredList = candidates.filter((c) => {
                         if (!c.interviewDate) return false;
-                        const match = c.interviewDate.match(/July (\d+)/);
-                        if (match) {
-                          const candDay = parseInt(match[1], 10);
-                          if (candDay < 10) return false;
+                        
+                        let candDayNum: number | null = null;
+                        const matchJuly = c.interviewDate.match(/July (\d+)/);
+                        if (matchJuly) {
+                          candDayNum = parseInt(matchJuly[1], 10);
+                        } else {
+                          const matchIso = c.interviewDate.match(/2026-07-(\d+)/);
+                          if (matchIso) {
+                            candDayNum = parseInt(matchIso[1], 10);
+                          }
                         }
+                        
+                        if (candDayNum !== null && candDayNum < todayDay) return false;
+                        
                         if (calendarFilter !== 'all' && c.interviewStatus !== calendarFilter && !(calendarFilter === 'In Progress' && (c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress'))) return false;
+                        
                         if (selectedCalendarDay !== null) {
                           const dayStr = `July ${selectedCalendarDay < 10 ? '0' + selectedCalendarDay : selectedCalendarDay}`;
-                          return c.interviewDate.includes(dayStr);
+                          const matchDateStr = `2026-07-${selectedCalendarDay < 10 ? '0' + selectedCalendarDay : selectedCalendarDay}`;
+                          return c.interviewDate.includes(dayStr) || c.interviewDate.includes(matchDateStr);
                         }
                         return true;
                       });
@@ -2059,9 +2212,19 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                               const sched = formatSchedule(c.interviewDate);
                               return (
                                 <>
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-slate-500 font-medium">📅 Date:</span>
-                                    <span className="font-mono font-bold text-purple-300 text-right">{sched.date}</span>
+                                  <div className="flex items-start justify-between">
+                                    <span className="text-slate-500 font-medium shrink-0 pt-0.5">📅 Date:</span>
+                                    {sched.date.includes(',') ? (
+                                      <div className="flex flex-col items-end gap-1">
+                                        {sched.date.split(',').map((d, dIdx) => (
+                                          <span key={dIdx} className="font-mono font-bold text-purple-300 text-right text-[10px]">
+                                            {d.trim()}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <span className="font-mono font-bold text-purple-300 text-right">{sched.date}</span>
+                                    )}
                                   </div>
                                   {sched.time && sched.time !== '-' && (
                                     <div className="flex items-center justify-between">

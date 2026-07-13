@@ -16,9 +16,10 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
 
   // Availability Screen State
   const [selectedDays, setSelectedDays] = useState<string[]>(user.availability?.days || ['Monday', 'Wednesday', 'Friday']);
-  const [selectedSlots, setSelectedSlots] = useState<string[]>(user.availability?.timeSlots || ['Morning (09:00 - 12:00 IST)', 'Afternoon (13:00 - 17:00 IST)']);
+  const [selectedSlots, setSelectedSlots] = useState<string[]>(user.availability?.timeSlots || ['9:00 AM - 12:00 PM']);
   const [timezone, setTimezone] = useState<string>(user.availability?.timezone || 'IST (UTC+5:30) - Indian Standard Time');
   const [isAvailabilitySaved, setIsAvailabilitySaved] = useState<boolean>(user.availability?.isConfirmed || false);
+  const [isSavingAvailability, setIsSavingAvailability] = useState<boolean>(false);
 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error'; visible: boolean }>({
     message: '',
@@ -103,23 +104,33 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
 
   const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
   const timeWindows = [
-    'Morning (09:00 - 12:00 IST)',
-    'Afternoon (13:00 - 17:00 IST)',
-    'Evening (18:00 - 21:00 IST)'
+    '9:00 AM - 12:00 PM',
+    '2:00 PM - 5:00 PM'
   ];
 
   const toggleDay = (day: string) => {
     setIsAvailabilitySaved(false);
-    setSelectedDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]);
+    setSelectedDays(prev => {
+      if (prev.includes(day)) {
+        return prev.filter(d => d !== day);
+      } else {
+        if (prev.length >= 3) {
+          showToast("⚠️ You can select a maximum of 3 preferred days.", "error");
+          return prev;
+        }
+        return [...prev, day];
+      }
+    });
   };
 
   const toggleSlot = (slot: string) => {
     setIsAvailabilitySaved(false);
-    setSelectedSlots(prev => prev.includes(slot) ? prev.filter(s => s !== slot) : [...prev, slot]);
+    setSelectedSlots([slot]);
   };
 
   const handleSaveAvailability = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSavingAvailability(true);
     try {
       const token = localStorage.getItem('yen_access_token');
       const apiUrl = getApiUrl();
@@ -145,6 +156,8 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
     } catch (err) {
       console.error(err);
       showToast("Connection error — could not sync availability with server.", "error");
+    } finally {
+      setIsSavingAvailability(false);
     }
   };
 
@@ -575,7 +588,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                       type="button"
                       onClick={() => {
                         setSelectedDays(['Monday', 'Wednesday', 'Friday']);
-                        setSelectedSlots(['Morning (09:00 - 12:00 IST)', 'Afternoon (13:00 - 17:00 IST)']);
+                        setSelectedSlots(['Morning (09:00 - 12:00 IST)']);
                         setIsAvailabilitySaved(false);
                       }}
                       className="px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 text-xs font-semibold transition-all cursor-pointer"
@@ -584,9 +597,16 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                     </button>
                     <button
                       type="submit"
-                      className="px-8 py-3.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-extrabold text-sm shadow-xl shadow-purple-600/25 transition-all cursor-pointer active:scale-95"
+                      disabled={isSavingAvailability}
+                      className="px-8 py-3.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-extrabold text-sm shadow-xl shadow-purple-600/25 transition-all cursor-pointer active:scale-95 disabled:opacity-60 flex items-center justify-center space-x-2"
                     >
-                      Save Availability & Confirm AI Studio Slot
+                      {isSavingAvailability && (
+                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                      )}
+                      <span>{isSavingAvailability ? 'Confirming with HR...' : 'Save Availability & Confirm AI Studio Slot'}</span>
                     </button>
                   </div>
                 </form>
