@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { User, CandidateTab } from '../../types';
+import { getApiUrl } from '../../utils/api';
 
 interface CandidateDashboardProps {
   user: User;
@@ -57,7 +58,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
     const fetchProfile = async () => {
       try {
         const token = localStorage.getItem('yen_access_token');
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+        const apiUrl = getApiUrl();
         const res = await fetch(`${apiUrl}/api/v1/recruitment/candidate/profile`, {
           headers: {
             Authorization: `Bearer ${token}`
@@ -121,7 +122,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
     e.preventDefault();
     try {
       const token = localStorage.getItem('yen_access_token');
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+      const apiUrl = getApiUrl();
       const res = await fetch(`${apiUrl}/api/v1/recruitment/candidate/availability`, {
         method: 'POST',
         headers: {

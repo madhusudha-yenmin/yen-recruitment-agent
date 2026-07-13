@@ -6,35 +6,39 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Smart defaults for standard secure mail ports
-mail_starttls = settings.MAIL_STARTTLS
-mail_ssl_tls = settings.MAIL_SSL_TLS
-
-if settings.MAIL_PORT == 587:
-    mail_starttls = True
-elif settings.MAIL_PORT == 465:
-    mail_ssl_tls = True
-
 import os
+from app.core.config import Settings
 
-# Spam Prevention Guard: If authenticated username is Gmail, MAIL_FROM must match it exactly.
-# Mismatched "From" header and authenticated SMTP username triggers Gmail spam/phishing filters.
-mail_from = settings.MAIL_FROM
-if settings.MAIL_USERNAME and "@gmail.com" in settings.MAIL_USERNAME.lower():
-    mail_from = settings.MAIL_USERNAME
+def get_mail_config() -> ConnectionConfig:
+    """Dynamically loads email config from .env so port/credential edits take effect without restarting."""
+    current_settings = Settings()
 
-conf = ConnectionConfig(
-    MAIL_USERNAME=settings.MAIL_USERNAME,
-    MAIL_PASSWORD=settings.MAIL_PASSWORD,
-    MAIL_FROM=mail_from,
-    MAIL_PORT=settings.MAIL_PORT,
-    MAIL_SERVER=settings.MAIL_SERVER,
-    MAIL_FROM_NAME=settings.MAIL_FROM_NAME,
-    MAIL_STARTTLS=mail_starttls,
-    MAIL_SSL_TLS=mail_ssl_tls,
-    USE_CREDENTIALS=True if settings.MAIL_USERNAME else False,
-    VALIDATE_CERTS=False
-)
+    mail_starttls = current_settings.MAIL_STARTTLS
+    mail_ssl_tls = current_settings.MAIL_SSL_TLS
+
+    if current_settings.MAIL_PORT == 587:
+        mail_starttls = True
+        mail_ssl_tls = False
+    elif current_settings.MAIL_PORT == 465:
+        mail_ssl_tls = True
+        mail_starttls = False
+
+    mail_from = current_settings.MAIL_FROM
+    if current_settings.MAIL_USERNAME and "@gmail.com" in current_settings.MAIL_USERNAME.lower():
+        mail_from = current_settings.MAIL_USERNAME
+
+    return ConnectionConfig(
+        MAIL_USERNAME=current_settings.MAIL_USERNAME,
+        MAIL_PASSWORD=current_settings.MAIL_PASSWORD,
+        MAIL_FROM=mail_from,
+        MAIL_PORT=current_settings.MAIL_PORT,
+        MAIL_SERVER=current_settings.MAIL_SERVER,
+        MAIL_FROM_NAME=current_settings.MAIL_FROM_NAME,
+        MAIL_STARTTLS=mail_starttls,
+        MAIL_SSL_TLS=mail_ssl_tls,
+        USE_CREDENTIALS=True if current_settings.MAIL_USERNAME else False,
+        VALIDATE_CERTS=False
+    )
 
 
 from string import Template
@@ -97,10 +101,11 @@ async def send_scheduling_email(
         subtype=MessageType.html
     )
 
-    fm = FastMail(conf)
+    fm = FastMail(get_mail_config())
     try:
         await fm.send_message(message)
         logger.info(f"Successfully sent scheduling email to {candidate_email}")
+        return True
     except Exception as e:
         logger.error(f"Failed to send scheduling email to {candidate_email} via SMTP: {e}")
         # Print to console for visibility

@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { UserRole, AuthView } from '../../types';
+import { getApiUrl } from '../../utils/api';
 
 interface SignUpProps {
   role: UserRole;
@@ -44,7 +45,7 @@ export const SignUp: React.FC<SignUpProps> = ({ role, onNavigate }) => {
     const timeout = setTimeout(() => controller.abort(), 10000);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+      const apiUrl = getApiUrl();
 
       // Map frontend role to backend UserRole enum
       const backendRole = role === 'hr' ? 'recruiter' : 'candidate';

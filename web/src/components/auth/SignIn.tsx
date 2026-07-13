@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { User, UserRole, AuthView } from '../../types';
+import { getApiUrl } from '../../utils/api';
 
 interface SignInProps {
   role: UserRole;
@@ -48,7 +49,7 @@ export const SignIn: React.FC<SignInProps> = ({ role, onLogin, onNavigate }) => 
     const timeout = setTimeout(() => controller.abort(), 10000);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+      const apiUrl = getApiUrl();
 
       // Step 1: Login — get JWT token
       const loginRes = await fetch(`${apiUrl}/api/v1/auth/login`, {
