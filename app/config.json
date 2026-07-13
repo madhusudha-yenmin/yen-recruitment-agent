@@ -1,0 +1,8 @@
+{
+  "ollama_llama": {
+    "provider_type": "ollama",
+    "model": "llama3.1:8b",
+    "base_url": "http://192.168.0.117:11434",
+    "temperature": 0
+  }
+}

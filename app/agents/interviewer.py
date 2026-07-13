@@ -90,32 +90,41 @@ async def simulate_interview_scheduling(candidate_name: str, candidate_email: st
 
 
 def _get_fallback_questions(job: JobCriteria, candidate: CandidateProfile, num_questions: int) -> QuestionPlan:
-    sk_name = candidate.skills[0].skill_name if candidate.skills else "Python"
+    sk_list = [s.skill_name for s in candidate.skills] if candidate.skills else job.required_skills
+    title_l = (job.title or "").lower()
+    if not sk_list or set(s.lower().strip() for s in sk_list).issubset({"python", "fastapi", "docker", "postgresql"}):
+        if any(w in title_l for w in ["wordpress", "php", "woocommerce", "cms"]):
+            sk_list = ["WordPress Core & PHP 8", "Plugin Development & Hooks", "Custom Theme Development", "Database Optimization & Security"]
+        elif any(w in title_l for w in ["react", "frontend", "ui", "next"]):
+            sk_list = ["React", "TypeScript", "Next.js", "State Management"]
+        else:
+            sk_list = ["Core Architecture", "APIs", "Database Design", "System Scaling"]
+    
+    sk1 = sk_list[0] if len(sk_list) > 0 else "Core Architecture"
+    sk2 = sk_list[1] if len(sk_list) > 1 else sk1
+    sk3 = sk_list[2] if len(sk_list) > 2 else sk2
+    sk4 = sk_list[3] if len(sk_list) > 3 else sk3
+    role = job.title or "Software Engineer"
+    
     mock_questions = [
-        QuestionItem(
-            type="technical",
-            difficulty="medium",
-            question_text=f"In your resume you mentioned working with {sk_name}. Can you explain how you handle concurrency and performance optimization?",
-            expected_key_points=["Asynchronous programming", "Memory management", "Profiling"]
-        ),
-        QuestionItem(
-            type="architecture",
-            difficulty="hard",
-            question_text="How would you design a distributed multi-agent recruitment system that can scale to thousands of simultaneous resume evaluations?",
-            expected_key_points=["Message queues", "Stateless worker nodes", "Database connection pooling", "Vector DB indexing"]
-        ),
-        QuestionItem(
-            type="behavioral",
-            difficulty="medium",
-            question_text="Tell me about a time when you had to resolve a critical production outage under tight deadlines.",
-            expected_key_points=["Root cause analysis", "Clear communication", "Post-mortem remediation"]
-        ),
-        QuestionItem(
-            type="scenario",
-            difficulty="medium",
-            question_text="If a third-party LLM provider experiences elevated latency or outages during an interview session, how would your architecture handle it gracefully?",
-            expected_key_points=["Circuit breakers", "Fallback models", "User notification and state checkpointing"]
-        )
+        # 5 Easy Questions
+        QuestionItem(type="technical", difficulty="easy", question_text=f"Explain the core architectural principles of {sk1} and why it is well suited for modern {role} roles.", expected_key_points=[f"{sk1} fundamentals", "Component/module structure", "Best practices"]),
+        QuestionItem(type="technical", difficulty="easy", question_text=f"What are the main differences between synchronous and asynchronous operations or lifecycle workflows when developing with {sk2}?", expected_key_points=["Asynchronous handling", "Event/execution loop", "Error boundaries"]),
+        QuestionItem(type="technical", difficulty="easy", question_text=f"How do you structure data flow, API integrations, and component/service dependencies using {sk3}?", expected_key_points=["State/data synchronization", "Clean boundaries", "Reusability"]),
+        QuestionItem(type="technical", difficulty="easy", question_text=f"Explain how you manage environment variables, automated testing, and build/deployment workflows for applications utilizing {sk1} and {sk4}.", expected_key_points=["CI/CD integration", "Environment configs", "Unit/integration testing"]),
+        QuestionItem(type="behavioral", difficulty="easy", question_text=f"Describe how you organize your daily engineering tasks as a {role} and prioritize urgent bug fixes versus planned feature development.", expected_key_points=["Task prioritization", "Time management", "Proactive communication"]),
+        # 5 Medium Questions
+        QuestionItem(type="technical", difficulty="medium", question_text=f"In your experience with {sk1}, can you explain how you handle state synchronization, memory leak prevention, and runtime performance optimization?", expected_key_points=["Memory footprint management", "Optimized execution/rendering", "Profiling tools"]),
+        QuestionItem(type="technical", difficulty="medium", question_text=f"How do you structure modular dependency injection, validation schemas, and reusable architectural patterns across complex {role} services using {sk2}?", expected_key_points=["Modular architecture", "Data/input validation", "Decoupled components"]),
+        QuestionItem(type="technical", difficulty="medium", question_text=f"Explain how caching, memoization, or indexing works in your {sk3}/{sk4} stack and when specific optimization strategies should be applied under load.", expected_key_points=["Caching/indexing mechanisms", "Execution performance analysis", "Cache invalidation"]),
+        QuestionItem(type="behavioral", difficulty="medium", question_text=f"Tell me about a time when you had to debug and resolve a critical production issue in a complex {role} application under tight deadlines.", expected_key_points=["Root cause identification", "Stakeholder updates", "Preventative post-mortem action"]),
+        QuestionItem(type="scenario", difficulty="medium", question_text=f"If a third-party API or backend service experiences elevated latency or failures during user interaction, how would your {sk1} architecture handle it gracefully?", expected_key_points=["Circuit breakers / retries", "Fallback state handling", "User notification & error recovery"]),
+        # 5 Hard Questions
+        QuestionItem(type="architecture", difficulty="hard", question_text=f"How would you design a highly scalable, enterprise-grade architecture for a {role} application ({sk1}/{sk3}) that supports millions of active requests and complex state management?", expected_key_points=["Scalable system design", "Decoupled state/data pipelines", "High availability patterns", "Observability/tracing"]),
+        QuestionItem(type="technical", difficulty="hard", question_text=f"How do you prevent race conditions, concurrent state deadlocks, and data synchronization bottlenecks when building high-throughput features using {sk1} and {sk2}?", expected_key_points=["Concurrency control", "Isolation & locking mechanisms", "Deadlock detection & retry logic"]),
+        QuestionItem(type="technical", difficulty="hard", question_text=f"Explain your detailed approach to bundle/payload optimization, resource caching, asset delivery, and security hardening (XSS/CSRF/injection prevention) for enterprise {role} deployments.", expected_key_points=["Payload/bundle minimization", "Multi-layer caching strategy", "Strict security hardening"]),
+        QuestionItem(type="architecture", difficulty="hard", question_text=f"How would you implement secure multi-tenant data isolation, modular architecture boundaries, and fine-grained role-based access control (RBAC) across a scalable {sk1} platform?", expected_key_points=["Tenant/role isolation", "Token claim verification", "Principle of least privilege"]),
+        QuestionItem(type="coding", difficulty="hard", question_text=f"How would you design and implement custom high-performance utilities or hooks using {sk2}/{sk1} to process and virtualize large datasets (e.g., 50,000+ items) in real-time without freezing execution?", expected_key_points=["Efficient algorithm complexity O(N log K) / O(N)", "Virtualization/batching techniques", "Memory-bounded processing"])
     ][:num_questions]
     return QuestionPlan(
         job_title=job.title,
@@ -132,14 +141,6 @@ async def generate_interview_questions(
     """Interview Agent Tool: Generates customized interview questions based on candidate resume and JD."""
     fallback_plan = _get_fallback_questions(job, candidate, num_questions)
 
-    if not settings.GROQ_API_KEY:
-        return AgentResponse(
-            status="success",
-            confidence=90,
-            reasoning_summary="Generated tailored interview questions using fallback template rules.",
-            data=fallback_plan
-        )
-
     cache_key = compute_cache_key("question_generator", f"{job.title}:{candidate.personal_info.name}:{num_questions}")
     cached = await get_cached_llm_response(cache_key)
     if cached:
@@ -148,6 +149,62 @@ async def generate_interview_questions(
             confidence=cached.get("confidence", 95),
             reasoning_summary="Retrieved interview questions from Redis cache.",
             data=QuestionPlan.model_validate(cached["data"])
+        )
+
+    # Check config.json for ollama_llama provider setup first
+    import os, json
+    config_path = "config.json" if os.path.exists("config.json") else ("app/config.json" if os.path.exists("app/config.json") else None)
+    if config_path:
+        try:
+            with open(config_path, "r", encoding="utf-8") as cf:
+                cfg = json.load(cf)
+            ollama_cfg = cfg.get("ollama_llama")
+            if ollama_cfg and ollama_cfg.get("provider_type") == "ollama":
+                base_url = ollama_cfg.get("base_url", "http://192.168.0.117:11434").rstrip("/")
+                model = ollama_cfg.get("model", "llama3.1:8b")
+                temperature = ollama_cfg.get("temperature", 0)
+                
+                logger.info(f"Generation Agent: Generating {num_questions} questions via Ollama ({model} @ {base_url})...")
+                client = instructor.from_openai(openai.AsyncOpenAI(
+                    api_key="ollama",
+                    base_url=f"{base_url}/v1",
+                    timeout=6.0,
+                    max_retries=0
+                ), mode=instructor.Mode.JSON)
+                
+                sk_names = ", ".join([sk.skill_name for sk in candidate.skills]) if candidate.skills else "Python, FastAPI, Docker, PostgreSQL"
+                prompt = f"""Role: {job.title}
+Exp: {candidate.total_experience_years}
+Skills: {sk_names}
+
+Generate {num_questions} interview questions ({max(1, num_questions//3)} easy, {max(1, num_questions//3)} medium, {max(1, num_questions - 2*(num_questions//3))} hard).
+JSON only matching QuestionPlan schema with job_title, candidate_name, and list of questions with type, difficulty, question_text, and expected_key_points."""
+                plan: QuestionPlan = await client.chat.completions.create(
+                    model=model,
+                    response_model=QuestionPlan,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=temperature,
+                )
+                plan.job_title = job.title
+                plan.candidate_name = candidate.personal_info.name
+                
+                response = AgentResponse(
+                    status="success",
+                    confidence=95,
+                    reasoning_summary=f"Successfully generated {len(plan.questions)} customized interview questions via Ollama ({model}).",
+                    data=plan
+                )
+                await save_cached_llm_response(cache_key, response.model_dump())
+                return response
+        except Exception as ollama_err:
+            logger.warning(f"Ollama question generation unavailable ({ollama_err}); falling back to Groq/Heuristic rules.")
+
+    if not getattr(settings, 'GROQ_API_KEY', None):
+        return AgentResponse(
+            status="success",
+            confidence=90,
+            reasoning_summary="Generated tailored interview questions using fallback template rules.",
+            data=fallback_plan
         )
 
     try:

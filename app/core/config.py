@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
     SERPER_API_KEY: Optional[str] = None
+    GROQ_API_KEY: Optional[str] = None
     DEFAULT_LLM_MODEL: str = "llama-3.3-70b-versatile"
     EMBEDDING_MODEL: str = "text-embedding-3-small"
 

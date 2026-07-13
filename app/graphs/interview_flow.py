@@ -57,7 +57,17 @@ async def generate_questions_node(state: InterviewState) -> Dict[str, Any]:
     job = _dict_to_job_criteria(state.get("job_analysis", {}))
     candidate = _dict_to_candidate_profile(state.get("candidate_profile", {}))
 
-    res = await generate_interview_questions(job, candidate, num_questions=4)
+    if state.get("pregenerated_questions"):
+        logger.info("Using unique pre-synthesized 15 questions from interview scheduling event.")
+        return {
+            "questions": state["pregenerated_questions"],
+            "current_question_index": 0,
+            "conversation_history": [
+                {"role": "system", "content": f"AI Interview Studio initialized for {job.title} with {candidate.personal_info.name}."}
+            ]
+        }
+
+    res = await generate_interview_questions(job, candidate, num_questions=15)
     if res.data:
         questions_dict = [q.model_dump() for q in res.data.questions]
         return {
