@@ -101,19 +101,35 @@ async def send_scheduling_email(
         subtype=MessageType.html
     )
 
+    # Warn if localhost URL is in email — Gmail will silently drop/spam such emails
+    if "localhost" in interview_link or "127.0.0.1" in interview_link:
+        logger.warning(
+            f"[EMAIL DELIVERABILITY WARNING] CANDIDATE_PORTAL_URL contains '{interview_link}'. "
+            "Gmail and most mail providers will silently drop or spam-filter emails containing localhost links. "
+            "Update CANDIDATE_PORTAL_URL in .env to a real HTTPS URL (ngrok, devtunnel, or production)."
+        )
+
     fm = FastMail(get_mail_config())
     try:
         await fm.send_message(message)
-        logger.info(f"Successfully sent scheduling email to {candidate_email}")
+        logger.info(f"[EMAIL SENT] Successfully dispatched scheduling email → To: {candidate_email} | Subject: '{subject}'")
         return True
     except Exception as e:
-        logger.error(f"Failed to send scheduling email to {candidate_email} via SMTP: {e}")
-        # Print to console for visibility
-        print(f"\n--- [FASTAPI-MAIL SEND FAILED (SMTP Offline)] ---")
-        print(f"To:      {candidate_email}")
-        print(f"Subject: {subject}")
-        print(f"Body (HTML Preview):\n{html_content[:400]}...")
-        print(f"-------------------------------------------------\n")
+        logger.error(
+            f"[EMAIL FAILED] Could not send scheduling email to {candidate_email}.\n"
+            f"  SMTP Error  : {type(e).__name__}: {e}\n"
+            f"  Server      : {get_mail_config().MAIL_SERVER}:{get_mail_config().MAIL_PORT}\n"
+            f"  Username    : {get_mail_config().MAIL_USERNAME}\n"
+            f"  STARTTLS    : {get_mail_config().MAIL_STARTTLS}\n"
+            f"  SSL/TLS     : {get_mail_config().MAIL_SSL_TLS}"
+        )
+        print(f"\n{'='*60}")
+        print(f"[EMAIL SEND FAILED]")
+        print(f"  To      : {candidate_email}")
+        print(f"  Subject : {subject}")
+        print(f"  Error   : {type(e).__name__}: {e}")
+        print(f"{'='*60}\n")
+        return False
 
 
 def utc_now_iso() -> str:

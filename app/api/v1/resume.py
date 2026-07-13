@@ -13,7 +13,7 @@ import string
 import random
 import string
 from pydantic import BaseModel
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Depends
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Depends, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from app.db.session import get_db
@@ -161,6 +161,7 @@ class ScheduleRequest(BaseModel):
 @router.post("/schedule-interview", status_code=status.HTTP_200_OK)
 async def schedule_interview_api(
     req: ScheduleRequest,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
     """

@@ -1,5 +1,9 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
+from pathlib import Path
+
+# Resolve .env relative to this file, so it works regardless of CWD
+_ENV_FILE = Path(__file__).parent.parent / ".env"
 
 
 class Settings(BaseSettings):
@@ -31,7 +35,7 @@ class Settings(BaseSettings):
 
     CANDIDATE_PORTAL_URL: str = "https://careers.yen.ai/portal"
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(env_file=str(_ENV_FILE), env_file_encoding="utf-8", extra="ignore")
 
 
 settings = Settings()

@@ -21,7 +21,8 @@ async def startup_event():
 # CORS Middleware setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    # allow_origin_regex="https?://.*",
+      allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

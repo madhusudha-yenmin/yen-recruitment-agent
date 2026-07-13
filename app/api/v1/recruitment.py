@@ -132,8 +132,16 @@ async def get_all_candidates(
                 for iv in cand.interviews:
                     if iv.scheduled_at is not None:
                         has_scheduled_interview = True
-                        # Format as YYYY-MM-DD @ HH:MM Timezone
-                        interview_date_str = iv.scheduled_at.strftime("%Y-%m-%d @ %I:%M %p UTC")
+                        if iv.transcript and isinstance(iv.transcript, dict) and "resolved_dates" in iv.transcript:
+                            dates_str = ", ".join(iv.transcript["resolved_dates"])
+                            slots_str = ", ".join(iv.transcript.get("preferred_slots", []))
+                            interview_date_str = f"{dates_str} @ {slots_str}"
+                        elif iv.transcript and isinstance(iv.transcript, dict) and "preferred_days" in iv.transcript:
+                            days_str = ", ".join(iv.transcript["preferred_days"])
+                            slots_str = ", ".join(iv.transcript.get("preferred_slots", []))
+                            interview_date_str = f"{days_str} @ {slots_str}"
+                        else:
+                            interview_date_str = iv.scheduled_at.strftime("%Y-%m-%d @ %I:%M %p UTC")
                         break
             
             # Per strict user requirement: candidate must stay in "Applied" (Candidates column of Kanban board)
@@ -376,7 +384,16 @@ async def get_candidate_profile(
         if candidate.interviews:
             for iv in candidate.interviews:
                 if iv.scheduled_at is not None:
-                    interview_date_str = iv.scheduled_at.strftime("%Y-%m-%d @ %I:%M %p UTC")
+                    if iv.transcript and isinstance(iv.transcript, dict) and "resolved_dates" in iv.transcript:
+                        dates_str = ", ".join(iv.transcript["resolved_dates"])
+                        slots_str = ", ".join(iv.transcript.get("preferred_slots", []))
+                        interview_date_str = f"{dates_str} @ {slots_str}"
+                    elif iv.transcript and isinstance(iv.transcript, dict) and "preferred_days" in iv.transcript:
+                        days_str = ", ".join(iv.transcript["preferred_days"])
+                        slots_str = ", ".join(iv.transcript.get("preferred_slots", []))
+                        interview_date_str = f"{days_str} @ {slots_str}"
+                    else:
+                        interview_date_str = iv.scheduled_at.strftime("%Y-%m-%d @ %I:%M %p UTC")
                     break
         
         return {
@@ -444,15 +461,30 @@ async def confirm_candidate_availability(
         # Parse preferred days and calculate nearest date
         DAY_MAP = {"Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3, "Friday": 4, "Saturday": 5, "Sunday": 6}
         now = datetime.now(dt_timezone.utc)
+        
+        resolved_dates = []
         min_delta = 1
         
         if req.days:
+            today_idx = now.weekday()
+            for d in req.days:
+                if d in DAY_MAP:
+                    day_idx = DAY_MAP[d]
+                    delta = (day_idx - today_idx) % 7
+                    if delta == 0:  # If selected day is today, schedule for next week
+                        delta = 7
+                    item_date = now + timedelta(days=delta)
+                    resolved_dates.append(item_date.strftime("%Y-%m-%d"))
+            
+            # Sort resolved dates chronologically
+            resolved_dates.sort()
+            
+            # Use the earliest date as the primary scheduled date
             day_indices = [DAY_MAP[d] for d in req.days if d in DAY_MAP]
             if day_indices:
-                today_idx = now.weekday()
                 deltas = [(idx - today_idx) % 7 for idx in day_indices]
                 min_delta = min(deltas)
-                if min_delta == 0:  # If selected day is today, schedule for next week to be safe or keep today
+                if min_delta == 0:
                     min_delta = 7
 
         hour = 9
@@ -481,13 +513,25 @@ async def confirm_candidate_availability(
             interview.scheduled_at = scheduled_at
             interview.job_id = job.id
             interview.status = "scheduled"
+            interview.transcript = {
+                "preferred_days": req.days,
+                "preferred_slots": req.time_slots,
+                "timezone": req.timezone,
+                "resolved_dates": resolved_dates
+            }
         else:
             interview = Interview(
                 candidate_id=candidate.id,
                 job_id=job.id,
                 scheduled_at=scheduled_at,
                 mode="ai-chat",
-                status="scheduled"
+                status="scheduled",
+                transcript={
+                    "preferred_days": req.days,
+                    "preferred_slots": req.time_slots,
+                    "timezone": req.timezone,
+                    "resolved_dates": resolved_dates
+                }
             )
             db.add(interview)
 
