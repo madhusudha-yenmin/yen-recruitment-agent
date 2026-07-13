@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, UserRole, AuthView } from '../../types';
 
 interface SignInProps {
@@ -14,6 +14,14 @@ export const SignIn: React.FC<SignInProps> = ({ role, onLogin, onNavigate }) => 
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const emailParam = params.get('email');
+    if (emailParam) {
+      setEmail(emailParam);
+    }
+  }, []);
 
   const handleQuickFill = () => {
     if (role === 'hr') {

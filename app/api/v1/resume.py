@@ -8,11 +8,19 @@ from typing import List
 
 logger = logging.getLogger(__name__)
 
+import random
+import string
+import random
+import string
+from pydantic import BaseModel
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 from app.db.session import get_db
 from app.models.candidate import Candidate, Resume as ResumeModel, CandidateSkill
+from app.models.user import User, UserRole
+from app.core.security import get_password_hash
+from app.services.notifications import send_scheduling_email
 
 from app.agents.resume_parser import parse_and_score_resume, ATSResult
 
@@ -85,6 +93,10 @@ async def parse_resumes(
                 candidate.linkedin = result.parsed.linkedin or candidate.linkedin
                 candidate.github = result.parsed.github or candidate.github
                 candidate.experience = result.parsed.experience_years or candidate.experience
+
+            # Skip auto-creation of user account and sending email during parsing.
+            # This is now triggered manually via the 'Schedule Interview' button.
+            pass
             
             # 2. Upsert Resume Model
             stmt_res = select(ResumeModel).where(ResumeModel.candidate_id == candidate.id)
@@ -138,3 +150,77 @@ async def parse_resumes(
     results.sort(key=lambda r: r.ats_score, reverse=True)
 
     return results
+
+
+class ScheduleRequest(BaseModel):
+    email: str
+    name: str
+    job_title: str
+
+
+@router.post("/schedule-interview", status_code=status.HTTP_200_OK)
+async def schedule_interview_api(
+    req: ScheduleRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Manually schedule an interview for a candidate.
+    Creates user account, generates temporary OTP password, updates candidate status,
+    and sends the interview invitation email via fastapi-mail.
+    """
+    try:
+        # 1. Upsert User Account
+        stmt_user = select(User).where(User.email == req.email)
+        res_user = await db.execute(stmt_user)
+        db_user = res_user.scalar_one_or_none()
+        
+        otp_password = "".join(random.choice(string.digits) for _ in range(8))
+        
+        if not db_user:
+            db_user = User(
+                email=req.email,
+                password_hash=get_password_hash(otp_password),
+                name=req.name,
+                role=UserRole.CANDIDATE,
+                status="active"
+            )
+            db.add(db_user)
+        else:
+            db_user.password_hash = get_password_hash(otp_password)
+            db_user.name = req.name or db_user.name
+            
+        # 2. Update Candidate status to 'shortlisted' / 'Scheduled' and map applied job role
+        stmt_cand = select(Candidate).where(Candidate.email == req.email)
+        res_cand = await db.execute(stmt_cand)
+        candidate = res_cand.scalar_one_or_none()
+        if candidate:
+            candidate.status = "shortlisted"
+            candidate.current_company = req.job_title
+            
+        # 3. Send scheduling email to candidate
+        from app.core.config import settings
+        await send_scheduling_email(
+            candidate_name=req.name,
+            candidate_email=req.email,
+            job_role=req.job_title,
+            otp_password=otp_password,
+            interview_link=f"{settings.CANDIDATE_PORTAL_URL}?email={req.email}"
+        )
+        
+        await db.commit()
+
+        # Broadcast WebSocket notification for real-time candidate updates
+        try:
+            from app.api.v1.recruitment import manager
+            await manager.broadcast({"event": "candidates_updated"})
+        except Exception as ws_err:
+            logger.error(f"WebSocket broadcast from resume module failed: {ws_err}")
+
+        return {"status": "success", "message": f"Interview scheduled and email sent to {req.email}"}
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Failed to manually schedule interview: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to schedule interview: {str(e)}"
+        )
