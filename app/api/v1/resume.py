@@ -199,7 +199,7 @@ async def schedule_interview_api(
             
         # 3. Send scheduling email to candidate
         from app.core.config import settings
-        await send_scheduling_email(
+        email_sent = await send_scheduling_email(
             candidate_name=req.name,
             candidate_email=req.email,
             job_role=req.job_title,
@@ -216,6 +216,8 @@ async def schedule_interview_api(
         except Exception as ws_err:
             logger.error(f"WebSocket broadcast from resume module failed: {ws_err}")
 
+        if not email_sent:
+            return {"status": "warning", "message": f"Candidate scheduled in DB, but SMTP email delivery to {req.email} failed. Please verify .env SMTP credentials."}
         return {"status": "success", "message": f"Interview scheduled and email sent to {req.email}"}
     except Exception as e:
         await db.rollback()

@@ -3,6 +3,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { User, HRTab, CandidateMatch, AgentLog, CandidateStatus } from '../../types';
+import { getApiUrl } from '../../utils/api';
 
 interface HRDashboardProps {
   user: User;
@@ -109,7 +110,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
   useEffect(() => {
     const fetchCandidates = async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+        const apiUrl = getApiUrl();
         const res = await fetch(`${apiUrl}/api/v1/recruitment/candidates`);
         if (res.ok) {
           const data = await res.json();
@@ -126,7 +127,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
     if (typeof window === 'undefined') return;
 
     // Setup WebSocket connection for event-driven real-time updates
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+    const apiUrl = getApiUrl();
     let wsUrl = '';
     try {
       const parsedApiUrl = new URL(apiUrl);
@@ -239,7 +240,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
     formData.append('experience', experience);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+      const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/api/v1/resume/parse`, {
         method: 'POST',
         body: formData,
@@ -394,7 +395,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
   const handleScheduleInterview = async (cand: CandidateMatch) => {
     setSchedulingCandidateId(cand.id);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+      const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/api/v1/resume/schedule-interview`, {
         method: 'POST',
         headers: {
@@ -454,7 +455,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
     setActiveStage(1);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+      const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/api/v1/recruitment/serper-search`, {
         method: 'POST',
         headers: {
