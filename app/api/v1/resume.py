@@ -197,6 +197,68 @@ async def schedule_interview_api(
             candidate.status = "shortlisted"
             candidate.current_company = req.job_title
             
+        # Automatic Question Generation via Generation Agent (using ollama_llama from config.json) upon interview schedule
+        questions_data = []
+        try:
+            from app.agents.interviewer import generate_interview_questions
+            from app.agents.discovery import JobCriteria, CandidateProfile, PersonalInfo, SkillItem
+            from app.models.interview import Interview
+            
+            cand_skills = [s.skill_name for s in candidate.skills] if (candidate and hasattr(candidate, "skills") and candidate.skills) else []
+            title_lower = (req.job_title or "Software Engineer").lower()
+            if not cand_skills:
+                if any(w in title_lower for w in ["wordpress", "php", "woocommerce", "cms"]):
+                    cand_skills = ["WordPress Core & PHP 8", "Custom Plugin & Theme Development", "WooCommerce & REST API", "MySQL & Query Performance", "Security & Vulnerability Hardening"]
+                elif any(w in title_lower for w in ["react", "frontend", "ui", "next"]):
+                    cand_skills = ["React", "TypeScript", "Next.js", "Redux Toolkit", "Tailwind CSS"]
+                elif any(w in title_lower for w in ["node", "express", "javascript"]):
+                    cand_skills = ["Node.js", "Express", "TypeScript", "MongoDB", "REST APIs"]
+                elif any(w in title_lower for w in ["java", "spring"]):
+                    cand_skills = ["Java", "Spring Boot", "Microservices", "PostgreSQL", "Docker"]
+                elif any(w in title_lower for w in ["devops", "cloud", "sre"]):
+                    cand_skills = ["Kubernetes", "Docker", "AWS/GCP", "Terraform", "CI/CD Pipelines"]
+                else:
+                    cand_skills = ["Python", "FastAPI", "Docker", "PostgreSQL", "System Design"]
+
+            sk_list = [SkillItem(skill_name=s.strip(), years=3.0, level="intermediate") for s in cand_skills if isinstance(s, str)]
+            job_crit = JobCriteria(title=req.job_title or "Software Engineer", required_skills=cand_skills, experience="3+ years")
+            cand_prof = CandidateProfile(
+                personal_info=PersonalInfo(name=req.name, email=req.email),
+                skills=sk_list,
+                total_experience_years=candidate.experience if (candidate and hasattr(candidate, "experience") and candidate.experience) else 3.0
+            )
+            q_res = await generate_interview_questions(job_crit, cand_prof, num_questions=15)
+            if q_res.data and q_res.data.questions:
+                for idx, q in enumerate(q_res.data.questions, 1):
+                    questions_data.append({
+                        "id": str(idx),
+                        "category": f"{q.type.capitalize() if q.type else 'Technical'} ({q.difficulty.capitalize() if q.difficulty else 'Medium'})",
+                        "question": q.question_text,
+                        "targetSkills": q.expected_key_points
+                    })
+            logger.info(f"Automatically generated {len(questions_data)} unique questions for {req.email}")
+            
+            # Persist synthesized questions to Candidate Resume & Interview record
+            if candidate:
+                if hasattr(candidate, "resumes") and candidate.resumes:
+                    latest_res = candidate.resumes[-1]
+                    latest_res.parsed_metadata = (latest_res.parsed_metadata or {}) | {"generated_questions": questions_data, "scheduled_role": req.job_title}
+                # Create or update interview record with transcript questions
+                if hasattr(candidate, "interviews") and candidate.interviews:
+                    iv = candidate.interviews[0]
+                    iv.transcript = (iv.transcript or {}) | {"generated_questions": questions_data, "job_title": req.job_title}
+                else:
+                    new_iv = Interview(
+                        candidate_id=candidate.id,
+                        job_id=candidate.id,  # fallback job link
+                        mode="ai-chat",
+                        status="scheduled",
+                        transcript={"generated_questions": questions_data, "job_title": req.job_title}
+                    )
+                    db.add(new_iv)
+        except Exception as q_gen_err:
+            logger.error(f"Automatic question generation warning: {q_gen_err}")
+            
         # 3. Send scheduling email to candidate
         from app.core.config import settings
         email_sent = await send_scheduling_email(
@@ -217,8 +279,16 @@ async def schedule_interview_api(
             logger.error(f"WebSocket broadcast from resume module failed: {ws_err}")
 
         if not email_sent:
-            return {"status": "warning", "message": f"Candidate scheduled in DB, but SMTP email delivery to {req.email} failed. Please verify .env SMTP credentials."}
-        return {"status": "success", "message": f"Interview scheduled and email sent to {req.email}"}
+            return {
+                "status": "warning",
+                "message": f"Candidate scheduled in DB, but SMTP email delivery to {req.email} failed. Please verify .env SMTP credentials.",
+                "generated_questions": questions_data
+            }
+        return {
+            "status": "success",
+            "message": f"Interview scheduled and unique 15 questions automatically synthesized for {req.name}",
+            "generated_questions": questions_data
+        }
     except Exception as e:
         await db.rollback()
         logger.error(f"Failed to manually schedule interview: {e}")

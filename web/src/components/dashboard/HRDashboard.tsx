@@ -187,29 +187,109 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
     };
   }, []);
 
-  // Questionnaire State (Generated from JD)
-  const [questions, setQuestions] = useState([
-    {
-      id: 1,
-      category: "Technical / Core Stack",
-      question: "Can you explain how you handle concurrency, asynchronous event loops, and database connection pooling in high-load production FastAPI services?",
-      targetSkills: ["Python Asyncio", "SQLAlchemy 2.0", "asyncpg pooling"]
-    },
-    {
-      id: 2,
-      category: "System Architecture",
-      question: "How would you design a distributed multi-agent recruitment platform using LangGraph that can scale to thousands of simultaneous resume evaluations without hitting rate limits?",
-      targetSkills: ["LangGraph State Machines", "Redis/Celery Queues", "Vector DB Indexing"]
-    },
-    {
-      id: 3,
-      category: "Behavioral & Leadership",
-      question: "Describe a situation where you had to resolve a critical database deadlock or production outage under tight deadlines while coordinating across engineering teams.",
-      targetSkills: ["Incident Commander Role", "Root Cause Analysis", "Automated Guardrails"]
-    }
-  ]);
+  // Questionnaire State (Dynamically synthesized via Question Generation Agent from JD)
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [selectedQuestionnaireCandId, setSelectedQuestionnaireCandId] = useState<string | null>(null);
+  const [lastGeneratedRole, setLastGeneratedRole] = useState<string>("");
+  const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
   const [newQuestionText, setNewQuestionText] = useState("");
   const [newQuestionCat, setNewQuestionCat] = useState("Technical / Core Stack");
+
+  const fetchDynamicQuestions = async (forceRegenerate = false) => {
+    if (questions.length > 0 && !forceRegenerate && lastGeneratedRole === jobTitle) return;
+    setIsGeneratingQuestions(true);
+    try {
+      const titleLower = (jobTitle || '').toLowerCase();
+      let defaultSkills = ['Python', 'FastAPI', 'Docker', 'PostgreSQL'];
+      if (titleLower.includes('wordpress') || titleLower.includes('php') || titleLower.includes('cms') || titleLower.includes('woocommerce')) {
+        defaultSkills = ['WordPress Core & PHP 8', 'Custom Plugin & Theme Development', 'WooCommerce & REST API', 'MySQL & Query Performance', 'Security & Vulnerability Hardening'];
+      } else if (titleLower.includes('react') || titleLower.includes('frontend') || titleLower.includes('ui')) {
+        defaultSkills = ['React', 'TypeScript', 'Next.js', 'Redux Toolkit', 'Tailwind CSS'];
+      } else if (titleLower.includes('node') || titleLower.includes('javascript')) {
+        defaultSkills = ['Node.js', 'Express', 'TypeScript', 'MongoDB', 'REST APIs'];
+      } else if (titleLower.includes('java') || titleLower.includes('spring')) {
+        defaultSkills = ['Java', 'Spring Boot', 'Microservices', 'PostgreSQL', 'Docker'];
+      } else if (titleLower.includes('devops') || titleLower.includes('cloud')) {
+        defaultSkills = ['Kubernetes', 'Docker', 'AWS/GCP', 'Terraform', 'CI/CD Pipelines'];
+      }
+      const skillsArray = keywords ? keywords.split(',').map(s => s.trim()).filter(Boolean) : defaultSkills;
+      const res = await fetch(`${getApiUrl()}/api/v1/recruitment/jd/generate-questions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          job_title: jobTitle || 'Backend Engineer',
+          skills: skillsArray.length > 0 ? skillsArray : defaultSkills,
+          num_questions: 15
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.questions && data.questions.length > 0) {
+          setQuestions(data.questions);
+          setLastGeneratedRole(jobTitle);
+          showToast(`Successfully synthesized ${data.questions.length} dynamic questions for ${jobTitle || 'Role'}!`, 'success');
+        }
+      }
+    } catch (err) {
+      console.error('Failed to generate dynamic questions via agent:', err);
+      showToast('Could not fetch from Question Agent. Please check backend connection.', 'error');
+    } finally {
+      setIsGeneratingQuestions(false);
+    }
+  };
+
+  const fetchCandidateSpecificQuestions = async (cand: any) => {
+    if (cand.generatedQuestions && cand.generatedQuestions.length > 0) {
+      setQuestions(cand.generatedQuestions);
+      return;
+    }
+    setIsGeneratingQuestions(true);
+    try {
+      const candRole = cand.role || cand.current_company || jobTitle || 'Software Engineer';
+      const skillsArray = (cand.skills && cand.skills.length > 0) ? cand.skills : ['WordPress Core & PHP 8', 'Plugin Development & Hooks', 'Custom Theme Development'];
+      const res = await fetch(`${getApiUrl()}/api/v1/recruitment/jd/generate-questions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          job_title: candRole,
+          skills: skillsArray,
+          num_questions: 15
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.questions && data.questions.length > 0) {
+          setQuestions(data.questions);
+          setCandidates(prev => prev.map(c => c.id === cand.id ? { ...c, generatedQuestions: data.questions } : c));
+          showToast(`Automatically synthesized ${data.questions.length} questions for ${cand.name}!`, 'success');
+        }
+      }
+    } catch (err) {
+      console.error('Failed candidate question auto-synthesis:', err);
+    } finally {
+      setIsGeneratingQuestions(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'questionnaire') {
+      if (selectedQuestionnaireCandId !== null) {
+        const selectedCand = candidates.find(c => c.id === selectedQuestionnaireCandId);
+        if (selectedCand) {
+          fetchCandidateSpecificQuestions(selectedCand);
+          return;
+        }
+      }
+      const firstWithQs = candidates.find(c => (c.generatedQuestions && c.generatedQuestions.length > 0) || c.interviewStatus === 'Scheduled' || c.status === 'Pending HR Review');
+      if (firstWithQs && selectedQuestionnaireCandId === null && questions.length === 0) {
+        setSelectedQuestionnaireCandId(firstWithQs.id);
+        fetchCandidateSpecificQuestions(firstWithQs);
+      } else if (lastGeneratedRole !== jobTitle || questions.length === 0) {
+        setSelectedQuestionnaireCandId(null);
+        fetchDynamicQuestions(true);
+      }
+    }
+  }, [activeTab, jobTitle, selectedQuestionnaireCandId]);
 
   // Resume Parsing States
   const [selectedResumes, setSelectedResumes] = useState<File[]>([]);
@@ -411,14 +491,21 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
       if (!response.ok) {
         throw new Error('Failed to schedule interview: ' + response.statusText);
       }
+      const resData = await response.json();
 
-      // Update the candidate's interviewStatus to 'Scheduled' and default date in the frontend state
+      // Update the candidate's interviewStatus to 'Scheduled' and store their unique auto-synthesized questions
       setCandidates(prev => prev.map(c => c.id === cand.id ? {
         ...c,
         interviewStatus: 'Scheduled',
         interviewDate: 'Awaiting Slot Selection @ -',
-        interviewMode: 'AI'
+        interviewMode: 'AI',
+        generatedQuestions: resData.generated_questions || []
       } : c));
+
+      if (resData.generated_questions && resData.generated_questions.length > 0) {
+        setQuestions(resData.generated_questions);
+        setSelectedQuestionnaireCandId(cand.id);
+      }
 
       setLogs(prev => [
         {
@@ -2043,12 +2130,77 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                       <span className="w-2 h-2 rounded-full bg-pink-500 animate-pulse" />
                     </h2>
                     <p className="text-xs text-slate-400 mt-1">
-                      Tailored interview questions synthesized by the autonomous Interview Agent from <span className="text-slate-300 font-medium">{jobTitle}</span>.
+                      Tailored interview questions synthesized dynamically by the autonomous Question Agent from <span className="text-slate-300 font-medium">{jobTitle}</span>.
                     </p>
                   </div>
-                  <span className="px-3.5 py-1.5 rounded-full bg-slate-950 border border-slate-800 text-xs font-bold text-slate-300 shrink-0">
-                    <span className="text-pink-400 font-mono mr-1">{questions.length}</span> Total Questions
+                  <div className="flex items-center space-x-3 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => fetchDynamicQuestions(true)}
+                      disabled={isGeneratingQuestions}
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-bold text-xs shadow-lg flex items-center space-x-2 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+                    >
+                      {isGeneratingQuestions ? (
+                        <>
+                          <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          <span>Synthesizing via Agent...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>⚡ Synthesize 15 Dynamic Questions</span>
+                        </>
+                      )}
+                    </button>
+                    <span className="px-3.5 py-1.5 rounded-full bg-slate-950 border border-slate-800 text-xs font-bold text-slate-300 shrink-0">
+                      <span className="text-pink-400 font-mono mr-1">{questions.length}</span> Total Questions
+                    </span>
+                  </div>
+                </div>
+
+                {/* Candidate & Role Question Switcher */}
+                <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-800/80">
+                  <span className="text-xs font-extrabold text-slate-400 mr-1 flex items-center">
+                    <span className="text-pink-400 mr-1">⚡</span> Auto-Synthesized Question Sets:
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedQuestionnaireCandId(null);
+                      fetchDynamicQuestions(true);
+                    }}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md ${
+                      selectedQuestionnaireCandId === null
+                        ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white scale-105 border border-pink-400/40'
+                        : 'bg-slate-950 text-slate-300 hover:bg-slate-800/80 border border-slate-800'
+                    }`}
+                  >
+                    📄 Role Default ({jobTitle || 'General'})
+                  </button>
+                  {candidates
+                    .filter(c => c.status !== 'Rejected')
+                    .map(cand => {
+                      const isSelected = selectedQuestionnaireCandId === cand.id;
+                      return (
+                        <button
+                          key={cand.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedQuestionnaireCandId(cand.id);
+                            fetchCandidateSpecificQuestions(cand);
+                          }}
+                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 shadow-md ${
+                            isSelected
+                              ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white scale-105 border border-purple-400/40'
+                              : 'bg-slate-950 text-slate-300 hover:bg-slate-800/80 border border-slate-800'
+                          }`}
+                        >
+                          <span>👤 {cand.name}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-black/50 text-pink-300 font-mono">
+                            {cand.generatedQuestions?.length || 15} Qs
+                          </span>
+                        </button>
+                      );
+                    })}
                 </div>
 
                 {/* Simple Category Filter Tabs */}
@@ -2118,6 +2270,30 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
 
               {/* Clean, Neat Single-Column Question Cards List */}
               <div className="space-y-3">
+                {isGeneratingQuestions && questions.length === 0 ? (
+                  <div className="p-12 rounded-3xl bg-slate-900/40 border border-slate-800/80 text-center space-y-4 animate-in fade-in">
+                    <div className="w-10 h-10 border-4 border-pink-500/30 border-t-pink-500 rounded-full animate-spin mx-auto" />
+                    <div>
+                      <h4 className="text-base font-extrabold text-white">Synthesizing Tailored JD Questions...</h4>
+                      <p className="text-xs text-slate-400 mt-1">Our autonomous Question Agent is generating 15 difficulty-graded interview questions for <span className="text-pink-400 font-semibold">{jobTitle}</span>.</p>
+                    </div>
+                  </div>
+                ) : questions.length === 0 ? (
+                  <div className="p-12 rounded-3xl bg-slate-900/40 border border-slate-800/80 text-center space-y-4">
+                    <div className="w-12 h-12 rounded-2xl bg-pink-500/10 border border-pink-500/20 flex items-center justify-center text-pink-400 font-black text-xl mx-auto">?</div>
+                    <div>
+                      <h4 className="text-base font-extrabold text-white">No Questions Generated Yet</h4>
+                      <p className="text-xs text-slate-400 mt-1">Click the button below or top right to dynamically generate 15 interview questions using the Question Agent.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => fetchDynamicQuestions(true)}
+                      className="px-5 py-2.5 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-bold text-xs shadow-md transition-all active:scale-95 cursor-pointer inline-flex items-center space-x-2"
+                    >
+                      <span>⚡ Generate 15 Dynamic Questions Now</span>
+                    </button>
+                  </div>
+                ) : null}
                 {questions
                   .filter(q => questionFilter === 'all' ? true : q.category === questionFilter)
                   .map((q) => (
@@ -2143,7 +2319,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
 
                         <div className="flex flex-wrap items-center gap-1.5 pt-1">
                           <span className="text-[11px] text-slate-500 font-medium mr-1">Target Skills:</span>
-                          {q.targetSkills.map((s, i) => (
+                          {(q.targetSkills || []).map((s: string, i: number) => (
                             <span key={i} className="px-2 py-0.5 rounded bg-slate-950/80 text-[11px] font-medium text-slate-300 border border-slate-800/80">
                               ✓ {s}
                             </span>

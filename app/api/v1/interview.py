@@ -20,16 +20,51 @@ class InterviewTurnRequest(BaseModel):
 
 
 @router.post("/start", status_code=status.HTTP_201_CREATED)
-async def start_interview_session(req: StartInterviewRequest) -> Dict[str, Any]:
+async def start_interview_session(req: StartInterviewRequest, db=None) -> Dict[str, Any]:
     """Starts a new interactive AI interview session."""
     session_id = str(uuid.uuid4())
     checkpointer = await get_checkpointer()
     graph = create_interview_graph(checkpointer=checkpointer)
 
+    # Check if candidate has unique auto-synthesized questions from their interview scheduling event
+    pregenerated_qs = []
+    try:
+        from app.db.session import async_session_maker
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+        from app.models.candidate import Candidate
+        
+        async with async_session_maker() as session:
+            stmt = select(Candidate).options(selectinload(Candidate.interviews), selectinload(Candidate.resumes)).where(Candidate.email == req.candidate_email)
+            res = await session.execute(stmt)
+            cand = res.scalar_one_or_none()
+            if cand:
+                if cand.interviews:
+                    for iv in cand.interviews:
+                        if iv.transcript and isinstance(iv.transcript, dict) and "generated_questions" in iv.transcript:
+                            pregenerated_qs = iv.transcript["generated_questions"]
+                            break
+                if not pregenerated_qs and cand.resumes:
+                    latest_res = cand.resumes[-1]
+                    if latest_res.parsed_metadata and isinstance(latest_res.parsed_metadata, dict) and "generated_questions" in latest_res.parsed_metadata:
+                        pregenerated_qs = latest_res.parsed_metadata["generated_questions"]
+    except Exception as db_err:
+        pass
+
+    title_lower = (req.job_title or "").lower()
+    default_skills = ["Python", "FastAPI", "System Design"]
+    if any(w in title_lower for w in ["react", "frontend", "ui"]):
+        default_skills = ["React", "TypeScript", "Next.js"]
+    elif any(w in title_lower for w in ["node", "javascript"]):
+        default_skills = ["Node.js", "Express", "MongoDB"]
+    elif any(w in title_lower for w in ["java", "spring"]):
+        default_skills = ["Java", "Spring Boot", "Microservices"]
+
     initial_state = {
         "session_id": session_id,
-        "job_analysis": {"title": req.job_title, "skills": ["Python", "FastAPI", "System Design"]},
+        "job_analysis": {"title": req.job_title, "skills": default_skills},
         "candidate_profile": {"name": req.candidate_name, "email": req.candidate_email},
+        "pregenerated_questions": pregenerated_qs,
         "is_complete": False
     }
 

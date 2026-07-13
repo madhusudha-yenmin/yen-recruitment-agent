@@ -61,4 +61,5 @@ export interface CandidateMatch {
     overall: number;
     criticPassed: boolean;
   };
+  generatedQuestions?: any[];
 }

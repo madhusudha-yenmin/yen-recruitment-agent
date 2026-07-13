@@ -167,6 +167,50 @@ async def get_all_candidates(
                 # Fallback to estimated score only for sourced/LinkedIn search profiles that don't have resumes
                 score = float(int(min(98, max(65, 95 - idx * 3))))
             
+            # Extract automatically synthesized questions if this candidate has an interview scheduled or resume parsed
+            gen_qs = []
+            if hasattr(cand, "interviews") and cand.interviews:
+                for iv in cand.interviews:
+                    if iv.transcript and isinstance(iv.transcript, dict) and "generated_questions" in iv.transcript:
+                        gen_qs = iv.transcript["generated_questions"]
+                        break
+            if not gen_qs and cand.resumes:
+                latest_res = cand.resumes[-1]
+                if latest_res.parsed_metadata and isinstance(latest_res.parsed_metadata, dict) and "generated_questions" in latest_res.parsed_metadata:
+                    gen_qs = latest_res.parsed_metadata["generated_questions"]
+
+            # AUTOMATIC SYNTHESIS FOR EVERY CANDIDATE (if not yet generated)
+            if not gen_qs:
+                try:
+                    from app.agents.interviewer import _get_fallback_questions
+                    from app.agents.discovery import JobCriteria, CandidateProfile, PersonalInfo, SkillItem
+                    
+                    cand_role = cand.current_company or "Software Engineer"
+                    sk_items = [SkillItem(skill_name=s.strip(), years=3.0, level="intermediate") for s in skills if isinstance(s, str)]
+                    job_crit = JobCriteria(title=cand_role, required_skills=skills, experience="3+ years")
+                    cand_prof = CandidateProfile(
+                        personal_info=PersonalInfo(name=cand.name or "Candidate", email=cand.email or "cand@example.com"),
+                        skills=sk_items,
+                        total_experience_years=cand.experience if cand.experience else 3.0
+                    )
+                    q_plan = _get_fallback_questions(job_crit, cand_prof, num_questions=15)
+                    if q_plan and q_plan.questions:
+                        auto_qs = []
+                        for q_idx, q in enumerate(q_plan.questions, 1):
+                            auto_qs.append({
+                                "id": str(q_idx),
+                                "category": f"{q.type.capitalize() if q.type else 'Technical'} ({q.difficulty.capitalize() if q.difficulty else 'Medium'})",
+                                "question": q.question_text,
+                                "targetSkills": q.expected_key_points
+                            })
+                        gen_qs = auto_qs
+                        if cand.resumes:
+                            latest_r = cand.resumes[-1]
+                            latest_r.parsed_metadata = (latest_r.parsed_metadata or {}) | {"generated_questions": auto_qs, "scheduled_role": cand_role}
+                            db.add(latest_r)
+                except Exception as auto_gen_err:
+                    logger.warning(f"Auto-synthesis during get_all_candidates fallback error for {cand.email}: {auto_gen_err}")
+
             candidates_list.append({
                 "id": str(cand.id),
                 "name": cand.name or "Unknown Candidate",
@@ -183,9 +227,15 @@ async def get_all_candidates(
                 "recommendation": "strong-hire" if score >= 85 else ("hire" if score >= 75 else "no-hire"),
                 "interviewStatus": interview_status,
                 "interviewDate": interview_date_str,
-                "interviewMode": "AI Chat Studio"
+                "interviewMode": "AI Chat Studio",
+                "generatedQuestions": gen_qs
             })
             
+        try:
+            await db.commit()
+        except Exception:
+            pass
+
         return {
             "status": "success",
             "candidates": candidates_list
@@ -444,6 +494,52 @@ async def confirm_candidate_availability(
         # Per strict user requirement: candidate is listed under "Pending HR Review" (Scheduled column)
         # once their interview date is selected (scheduled_at is not None).
         candidate.status = "shortlisted"
+        
+        # Automatically synthesize unique 15 questions if not already synthesized for this candidate
+        try:
+            if not (interview.transcript and isinstance(interview.transcript, dict) and "generated_questions" in interview.transcript):
+                from app.agents.interviewer import generate_interview_questions
+                from app.agents.discovery import JobCriteria, CandidateProfile, PersonalInfo, SkillItem
+                
+                cand_skills = [s.skill_name for s in candidate.skills] if candidate.skills else []
+                title_lower = (job.title or "Software Engineer").lower()
+                if not cand_skills:
+                    if any(w in title_lower for w in ["react", "frontend", "ui", "next"]):
+                        cand_skills = ["React", "TypeScript", "Next.js", "Redux Toolkit", "Tailwind CSS"]
+                    elif any(w in title_lower for w in ["node", "express", "javascript"]):
+                        cand_skills = ["Node.js", "Express", "TypeScript", "MongoDB", "REST APIs"]
+                    elif any(w in title_lower for w in ["java", "spring"]):
+                        cand_skills = ["Java", "Spring Boot", "Microservices", "PostgreSQL", "Docker"]
+                    elif any(w in title_lower for w in ["devops", "cloud", "sre"]):
+                        cand_skills = ["Kubernetes", "Docker", "AWS/GCP", "Terraform", "CI/CD Pipelines"]
+                    else:
+                        cand_skills = ["Python", "FastAPI", "Docker", "PostgreSQL", "System Design"]
+
+                sk_list = [SkillItem(skill_name=s.strip(), years=3.0, level="intermediate") for s in cand_skills if isinstance(s, str)]
+                job_crit = JobCriteria(title=job.title or "Software Engineer", required_skills=cand_skills, experience="3+ years")
+                cand_prof = CandidateProfile(
+                    personal_info=PersonalInfo(name=candidate.name or "Candidate", email=candidate.email),
+                    skills=sk_list,
+                    total_experience_years=candidate.experience if candidate.experience else 3.0
+                )
+                q_res = await generate_interview_questions(job_crit, cand_prof, num_questions=15)
+                questions_data = []
+                if q_res.data and q_res.data.questions:
+                    for idx, q in enumerate(q_res.data.questions, 1):
+                        questions_data.append({
+                            "id": str(idx),
+                            "category": f"{q.type.capitalize() if q.type else 'Technical'} ({q.difficulty.capitalize() if q.difficulty else 'Medium'})",
+                            "question": q.question_text,
+                            "targetSkills": q.expected_key_points
+                        })
+                interview.transcript = (interview.transcript or {}) | {"generated_questions": questions_data, "job_title": job.title}
+                if candidate.resumes:
+                    latest_res = candidate.resumes[-1]
+                    latest_res.parsed_metadata = (latest_res.parsed_metadata or {}) | {"generated_questions": questions_data, "scheduled_role": job.title}
+                logger.info(f"Auto-synthesized {len(questions_data)} questions via availability endpoint for {candidate.email}")
+        except Exception as q_gen_err:
+            logger.error(f"Availability auto question generation warning: {q_gen_err}")
+
         await db.commit()
         
         # Broadcast candidates update event to notify all connected HR dashboards in real-time
@@ -461,6 +557,66 @@ async def confirm_candidate_availability(
         await db.rollback()
         logger.error(f"Error saving candidate availability: {exc}")
         raise HTTPException(status_code=500, detail="Failed to save availability preferences.")
+
+
+class GenerateJDQuestionsRequest(BaseModel):
+    job_title: str
+    skills: Optional[List[str]] = None
+    experience: Optional[str] = "3 years"
+    num_questions: Optional[int] = 15
+
+
+@router.post("/jd/generate-questions", status_code=status.HTTP_200_OK)
+async def generate_jd_questions_endpoint(req: GenerateJDQuestionsRequest) -> Dict[str, Any]:
+    """Uses Question Generation Agent (Ollama / Fallback) to dynamically generate tailored interview questions for JD Questionnaire."""
+    from app.agents.interviewer import generate_interview_questions
+    from app.agents.discovery import JobCriteria, CandidateProfile, PersonalInfo, SkillItem
+    
+    sk_list = req.skills or []
+    title_lower = (req.job_title or "Backend Engineer").lower()
+    default_python = {"python", "fastapi", "docker", "postgresql", "langgraph"}
+    is_default_or_empty = not sk_list or set(s.lower().strip() for s in sk_list).issubset(default_python)
+    
+    if is_default_or_empty:
+        if any(w in title_lower for w in ["wordpress", "php", "woocommerce", "cms"]):
+            sk_list = ["WordPress Core & PHP 8", "Custom Plugin & Theme Development", "WooCommerce & REST API", "MySQL & Query Performance", "Security & Vulnerability Hardening"]
+        elif any(w in title_lower for w in ["react", "frontend", "ui", "next", "angular", "vue"]):
+            sk_list = ["React", "TypeScript", "Next.js", "Redux Toolkit", "Tailwind CSS", "HTML5/CSS3"]
+        elif any(w in title_lower for w in ["node", "express", "javascript", "js"]):
+            sk_list = ["Node.js", "Express", "TypeScript", "MongoDB", "REST APIs", "Docker"]
+        elif any(w in title_lower for w in ["java", "spring"]):
+            sk_list = ["Java", "Spring Boot", "Microservices", "PostgreSQL", "Kafka", "Docker"]
+        elif any(w in title_lower for w in ["devops", "cloud", "sre", "infra"]):
+            sk_list = ["Kubernetes", "Docker", "AWS/GCP", "Terraform", "CI/CD Pipelines", "Prometheus"]
+        elif any(w in title_lower for w in ["data", "ml", "ai", "scientist", "engineer"]):
+            sk_list = ["Python", "PyTorch/TensorFlow", "LangChain", "Vector DBs", "FastAPI", "Data Pipelines"]
+        else:
+            sk_list = ["Python", "FastAPI", "Docker", "PostgreSQL", "Redis"]
+
+    job_crit = JobCriteria(title=req.job_title or "Backend Engineer", required_skills=sk_list, experience=req.experience or "3+ years")
+    cand_prof = CandidateProfile(
+        personal_info=PersonalInfo(name="Synthetic Candidate", email="candidate@yen.ai"),
+        skills=[SkillItem(skill_name=s.strip(), years=3.0, level="intermediate") for s in sk_list if isinstance(s, str)],
+        total_experience_years=3.0
+    )
+    
+    q_res = await generate_interview_questions(job_crit, cand_prof, num_questions=req.num_questions or 15)
+    questions_data = []
+    if q_res.data and q_res.data.questions:
+        for idx, q in enumerate(q_res.data.questions, 1):
+            category = "Technical / Core Stack"
+            if q.type == "architecture": category = "System Architecture"
+            elif q.type == "behavioral": category = "Behavioral & Leadership"
+            elif q.type == "scenario": category = "Scenario & Problem Solving"
+            elif q.type == "coding": category = "Technical / Core Stack"
+            
+            questions_data.append({
+                "id": idx,
+                "category": category,
+                "question": q.question_text,
+                "targetSkills": q.expected_key_points or sk_list[:3]
+            })
+    return {"status": "success", "questions": questions_data, "total": len(questions_data)}
 
 
 class ConnectionManager:
