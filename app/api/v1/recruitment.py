@@ -219,6 +219,24 @@ async def get_all_candidates(
                 except Exception as auto_gen_err:
                     logger.warning(f"Auto-synthesis during get_all_candidates fallback error for {cand.email}: {auto_gen_err}")
 
+            # Check if candidate has submitted answers / evaluations stored in transcript or parsed_metadata
+            sub_ans = {}
+            eval_det = {}
+            syn_rep = ""
+            if hasattr(cand, "interviews") and cand.interviews:
+                for iv in cand.interviews:
+                    if iv.transcript and isinstance(iv.transcript, dict) and "submitted_answers" in iv.transcript:
+                        sub_ans = iv.transcript["submitted_answers"]
+                        eval_det = iv.transcript.get("evaluation_details", {})
+                        syn_rep = iv.transcript.get("synthesis_report", "")
+                        break
+            if not sub_ans and cand.resumes:
+                latest_res = cand.resumes[-1]
+                if latest_res.parsed_metadata and isinstance(latest_res.parsed_metadata, dict) and "submitted_answers" in latest_res.parsed_metadata:
+                    sub_ans = latest_res.parsed_metadata["submitted_answers"]
+                    eval_det = latest_res.parsed_metadata.get("evaluation_details", {})
+                    syn_rep = latest_res.parsed_metadata.get("synthesis_report", "")
+
             candidates_list.append({
                 "id": str(cand.id),
                 "name": cand.name or "Unknown Candidate",
@@ -236,7 +254,10 @@ async def get_all_candidates(
                 "interviewStatus": interview_status,
                 "interviewDate": interview_date_str,
                 "interviewMode": "AI Chat Studio",
-                "generatedQuestions": gen_qs
+                "generatedQuestions": gen_qs,
+                "submittedAnswers": sub_ans,
+                "evaluationDetails": eval_det if eval_det else None,
+                "synthesisReport": syn_rep
             })
             
         try:
@@ -381,21 +402,63 @@ async def get_candidate_profile(
         role = candidate.current_company or "AI Specialist"
         
         interview_date_str = "Awaiting slot"
+        scheduled_at_iso = None
+        gen_qs = []
         if candidate.interviews:
             for iv in candidate.interviews:
                 if iv.scheduled_at is not None:
-                    if iv.transcript and isinstance(iv.transcript, dict) and "resolved_dates" in iv.transcript:
-                        dates_str = ", ".join(iv.transcript["resolved_dates"])
-                        slots_str = ", ".join(iv.transcript.get("preferred_slots", []))
-                        interview_date_str = f"{dates_str} @ {slots_str}"
-                    elif iv.transcript and isinstance(iv.transcript, dict) and "preferred_days" in iv.transcript:
-                        days_str = ", ".join(iv.transcript["preferred_days"])
-                        slots_str = ", ".join(iv.transcript.get("preferred_slots", []))
-                        interview_date_str = f"{days_str} @ {slots_str}"
-                    else:
-                        interview_date_str = iv.scheduled_at.strftime("%Y-%m-%d @ %I:%M %p UTC")
+                    scheduled_at_iso = iv.scheduled_at.isoformat() if hasattr(iv.scheduled_at, "isoformat") else str(iv.scheduled_at)
+                    if iv.transcript and isinstance(iv.transcript, dict):
+                        if "resolved_dates" in iv.transcript:
+                            dates_str = ", ".join(iv.transcript["resolved_dates"])
+                            slots_str = ", ".join(iv.transcript.get("preferred_slots", []))
+                            interview_date_str = f"{dates_str} @ {slots_str}"
+                        elif "preferred_days" in iv.transcript:
+                            days_str = ", ".join(iv.transcript["preferred_days"])
+                            slots_str = ", ".join(iv.transcript.get("preferred_slots", []))
+                            interview_date_str = f"{days_str} @ {slots_str}"
+                        else:
+                            interview_date_str = iv.scheduled_at.strftime("%Y-%m-%d @ %I:%M %p UTC")
+                        gen_qs = iv.transcript.get("generated_questions", [])
                     break
-        
+        if not gen_qs and candidate.resumes:
+            latest_res = candidate.resumes[-1]
+            if latest_res.parsed_metadata and isinstance(latest_res.parsed_metadata, dict):
+                gen_qs = latest_res.parsed_metadata.get("generated_questions", [])
+
+        if not gen_qs:
+            try:
+                from app.agents.interviewer import _get_fallback_questions
+                from app.agents.discovery import JobCriteria, CandidateProfile, PersonalInfo, SkillItem
+                sk_items = [SkillItem(skill_name=s.strip(), years=3.0, level="intermediate") for s in skills if isinstance(s, str)]
+                job_crit = JobCriteria(title=role, required_skills=skills, experience="3+ years")
+                cand_prof = CandidateProfile(
+                    personal_info=PersonalInfo(name=candidate.name or current_user.name, email=candidate.email),
+                    skills=sk_items,
+                    total_experience_years=candidate.experience if candidate.experience else 3.0
+                )
+                q_plan = _get_fallback_questions(job_crit, cand_prof, num_questions=15)
+                if q_plan and q_plan.questions:
+                    auto_qs = []
+                    for q_idx, q in enumerate(q_plan.questions, 1):
+                        auto_qs.append({
+                            "id": str(q_idx),
+                            "category": f"{q.type.capitalize() if q.type else 'Technical'} ({q.difficulty.capitalize() if q.difficulty else 'Medium'})",
+                            "question": q.question_text,
+                            "targetSkills": q.expected_key_points
+                        })
+                    gen_qs = auto_qs
+                    if candidate.resumes:
+                        latest_r = candidate.resumes[-1]
+                        latest_r.parsed_metadata = (latest_r.parsed_metadata or {}) | {"generated_questions": auto_qs, "scheduled_role": role}
+                        db.add(latest_r)
+                        try:
+                            await db.commit()
+                        except Exception:
+                            pass
+            except Exception as auto_gen_err:
+                logger.warning(f"Auto-synthesis during get_candidate_profile error: {auto_gen_err}")
+
         return {
             "status": "success",
             "profile": {
@@ -407,7 +470,9 @@ async def get_candidate_profile(
                 "status": candidate.status,
                 "role": role,
                 "skills": skills,
-                "interviewDate": interview_date_str
+                "interviewDate": interview_date_str,
+                "scheduledAtISO": scheduled_at_iso,
+                "generatedQuestions": gen_qs
             }
         }
     except Exception as exc:
