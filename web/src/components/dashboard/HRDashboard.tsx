@@ -23,23 +23,47 @@ const formatSchedule = (scheduleStr?: string) => {
   }
 
   try {
-    // If there are multiple comma-separated dates, format them individually
-    const dates = datePart.split(',').map(s => s.trim());
-    const formattedDates = dates.map(dStr => {
-      // Only attempt to parse standard database dates (e.g., YYYY-MM-DD)
-      // Custom HR strings like "Jul 19" should be left exactly as they typed it
-      if (dStr.match(/^\d{4}-\d{2}-\d{2}/)) {
-        const d = new Date(dStr);
-        if (!isNaN(d.getTime())) {
-          const day = d.getDate();
-          const month = d.getMonth() + 1;
-          const year = d.getFullYear().toString().slice(-2);
-          return `${day}/${month}/${year}`;
+    const daySet = new Set<number>();
+    
+    // Match standard YYYY-MM-DD
+    const isoRegex = /2026-07-(\d{1,2})/gi;
+    let m;
+    while ((m = isoRegex.exec(datePart)) !== null) {
+      const d = parseInt(m[1], 10);
+      if (!isNaN(d)) daySet.add(d);
+    }
+    // Match Jul/July XX
+    const julRegex = /Jul(?:y)?\s*(\d{1,2})/gi;
+    while ((m = julRegex.exec(datePart)) !== null) {
+      const d = parseInt(m[1], 10);
+      if (!isNaN(d)) daySet.add(d);
+    }
+    // Match DD-MM-YYYY or DD/MM/YY (e.g. 20-07-2026 or 20/7/26)
+    const slashRegex = /\b(\d{1,2})[-/](0?7)[-/](2026|26)\b/gi;
+    while ((m = slashRegex.exec(datePart)) !== null) {
+      const d = parseInt(m[1], 10);
+      if (!isNaN(d)) daySet.add(d);
+    }
+
+    if (daySet.size > 0) {
+      const sortedDays = Array.from(daySet).sort((a, b) => a - b);
+      datePart = sortedDays.map(d => `${d}/7/26`).join(', ');
+    } else {
+      const dates = datePart.split(',').map(s => s.trim());
+      const formattedDates = dates.map(dStr => {
+        if (dStr.match(/^\d{4}-\d{2}-\d{2}/)) {
+          const d = new Date(dStr);
+          if (!isNaN(d.getTime())) {
+            const day = d.getDate();
+            const month = d.getMonth() + 1;
+            const year = d.getFullYear().toString().slice(-2);
+            return `${day}/${month}/${year}`;
+          }
         }
-      }
-      return dStr; // Return custom strings as is (e.g. "Jul 19")
-    });
-    datePart = formattedDates.join(', ');
+        return dStr;
+      });
+      datePart = Array.from(new Set(formattedDates)).join(', ');
+    }
   } catch (e) {
     // keep as is if unparseable
   }
@@ -382,6 +406,15 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
     e.preventDefault();
     if (selectedResumes.length === 0) return;
 
+    if (uploadProposedDates.trim()) {
+      const datesList = uploadProposedDates.split(',').map(d => d.trim()).filter(Boolean);
+      const isValidFormat = datesList.every(d => /^\d{4}-\d{2}-\d{2}$/.test(d));
+      if (!isValidFormat) {
+        alert('Please enter proposed interview dates strictly in YYYY-MM-DD format (e.g., 2026-07-20, 2026-07-21).');
+        return;
+      }
+    }
+
     setIsParsing(true);
     setParsingStatusText('Analyzing Resumes...');
     const formData = new FormData();
@@ -596,7 +629,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
 
   const handleScheduleClick = (cand: CandidateMatch) => {
     setCandidateToSchedule(cand);
-    setProposedDatesInput('Jul 20, Jul 21'); // Example default
+    setProposedDatesInput('20-07-2026, 21-07-2026'); // Example default
     setShowProposedDatesModal(true);
   };
 
@@ -1646,15 +1679,15 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
 
                       {/* Proposed Interview Dates Input */}
                       <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-300">Proposed Interview Dates (Optional)</label>
+                        <label className="text-xs font-bold text-slate-300">Proposed Interview Dates (Optional - YYYY-MM-DD format)</label>
                         <input
                           type="text"
                           value={uploadProposedDates}
                           onChange={(e) => setUploadProposedDates(e.target.value)}
-                          placeholder="e.g. Jul 19, Jul 20  or 2026-07-19, 2026-07-20 (ISO)"
+                          placeholder="e.g. 2026-07-20, 2026-07-21"
                           className="w-full bg-slate-900/50 border border-slate-800 rounded-xl px-4 py-3 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
                         />
-                        <p className="text-[10px] text-slate-500 leading-tight">These dates will be sent to candidates who score &gt; 50%. Leave blank to skip automatic scheduling.</p>
+                        <p className="text-[10px] text-slate-500 leading-tight">These dates must be in YYYY-MM-DD format and will be sent to candidates who score &gt; 50%. Leave blank to skip automatic scheduling.</p>
                       </div>
 
                       <button
@@ -3394,13 +3427,13 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                 <div className="space-y-4 mb-6">
                   <div>
                     <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                      Proposed Dates
+                      Proposed Dates (YYYY-MM-DD format)
                     </label>
                     <input
                       type="text"
                       value={proposedDatesInput}
                       onChange={(e) => setProposedDatesInput(e.target.value)}
-                      placeholder="e.g. Jul 20, Jul 21, Jul 22"
+                      placeholder="e.g. 2026-07-20, 2026-07-21, 2026-07-22"
                       className="w-full bg-slate-950/50 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all placeholder:text-slate-600"
                     />
                   </div>
@@ -3416,6 +3449,13 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                   <button
                     onClick={() => {
                       const datesList = proposedDatesInput.split(',').map(d => d.trim()).filter(d => d);
+                      if (datesList.length > 0) {
+                        const isValidFormat = datesList.every(d => /^\d{4}-\d{2}-\d{2}$/.test(d));
+                        if (!isValidFormat) {
+                          alert('Please enter proposed interview dates strictly in YYYY-MM-DD format (e.g., 2026-07-20, 2026-07-21).');
+                          return;
+                        }
+                      }
                       executeScheduleInterview(candidateToSchedule, datesList.length > 0 ? datesList : ['Next 3 Business Days']);
                     }}
                     disabled={schedulingCandidateId === candidateToSchedule.id}
