@@ -4,6 +4,8 @@
 import React, { useState, useEffect } from 'react';
 import { User, CandidateTab } from '../../types';
 import { getApiUrl } from '../../utils/api';
+import { useProctoring } from '../../hooks/useProctoring';
+import { ProctoringPanel } from '../interview/ProctoringPanel';
 
 interface CandidateDashboardProps {
   user: User;
@@ -146,6 +148,16 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
 
     return { isUnlocked: true, reason: "" };
   };
+  // ── Webcam consent gate — modal shown once when entering the studio tab ──
+  const [webcamConsented, setWebcamConsented] = useState(false);
+
+  // Reset consent each time the candidate leaves the studio so modal re-appears
+  useEffect(() => {
+    if (activeTab !== 'studio') setWebcamConsented(false);
+  }, [activeTab]);
+
+  // ── Proctoring (activates only AFTER webcam consent, inside studio tab) ──
+  const proctoring = useProctoring(activeTab === 'studio' && webcamConsented);
 
   useEffect(() => {
     const fetchProfile = async () => {
@@ -824,6 +836,20 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                   </button>
                 </div>
               </div>
+
+              {/* ── RIGHT: Proctoring Panel ─────────────────────────────────── */}
+              <div className="w-72 shrink-0 sticky top-4">
+                <ProctoringPanel
+                  videoRef={proctoring.videoRef}
+                  violations={proctoring.violations}
+                  integrityScore={proctoring.integrityScore}
+                  isWebcamActive={proctoring.isWebcamActive}
+                  faceStatus={proctoring.faceStatus}
+                  gazeZone={proctoring.gazeZone}
+                  permissionDenied={proctoring.permissionDenied}
+                />
+              </div>
+
             </div>
           )}
 
@@ -1095,6 +1121,88 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
               )}
             </div>
             <div className="text-xs font-bold leading-relaxed">{toast.message}</div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Webcam Consent Modal ───────────────────────────────────────────── */}
+      {activeTab === 'studio' && !webcamConsented && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ backdropFilter: 'blur(16px)', backgroundColor: 'rgba(2,6,23,0.85)' }}>
+          {/* Glow blobs */}
+          <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-1/3 right-1/3 w-64 h-64 bg-purple-600/15 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="relative w-full max-w-md bg-slate-900/95 border border-slate-700/80 rounded-3xl shadow-2xl shadow-indigo-500/10 overflow-hidden">
+            {/* Top gradient bar */}
+            <div className="h-1 w-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
+
+            <div className="p-8 space-y-6">
+              {/* Icon + title */}
+              <div className="flex flex-col items-center gap-4 text-center">
+                <div className="relative">
+                  <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/30 flex items-center justify-center shadow-xl shadow-indigo-500/10">
+                    <svg className="w-10 h-10 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                        d="M15 10l4.553-2.07A1 1 0 0121 8.868V15.13a1 1 0 01-1.447.9L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" />
+                    </svg>
+                  </div>
+                  <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 border-2 border-slate-900 flex items-center justify-center">
+                    <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+                  </span>
+                </div>
+                <div>
+                  <h2 className="text-xl font-extrabold text-white tracking-tight">Webcam Required</h2>
+                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                    This interview is proctored by YEN AI. Your webcam must be enabled before you can begin.
+                  </p>
+                </div>
+              </div>
+
+              {/* What is monitored */}
+              <div className="rounded-2xl bg-slate-950/60 border border-slate-800 p-4 space-y-2.5">
+                <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500 mb-1">Monitoring in this session</p>
+                {[
+                  { icon: '📷', label: 'Webcam feed & face presence detection' },
+                  { icon: '👁', label: 'Eye movement & gaze direction tracking' },
+                  { icon: '🖥',  label: 'Tab switches & window focus changes' },
+                  { icon: '📋', label: 'Clipboard — copy, paste & cut blocked' },
+                  { icon: '⌨️', label: 'Keyboard shortcuts (Ctrl+C/V, F12, etc.)' },
+                  { icon: '🖱',  label: 'Right-click context menu blocked' },
+                ].map(item => (
+                  <div key={item.label} className="flex items-center gap-3">
+                    <span className="text-base shrink-0">{item.icon}</span>
+                    <span className="text-[11px] text-slate-300 font-medium">{item.label}</span>
+                    <span className="ml-auto text-[10px] text-red-400 font-bold shrink-0">ACTIVE</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Consent note */}
+              <p className="text-[10px] text-slate-500 text-center leading-relaxed">
+                By clicking <strong className="text-slate-300">Enable Webcam &amp; Start</strong>, you acknowledge that this session is
+                monitored. Violations are recorded and reviewed by the HR team.
+              </p>
+
+              {/* Action buttons */}
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => setWebcamConsented(true)}
+                  className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-extrabold text-sm shadow-xl shadow-indigo-500/25 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M15 10l4.553-2.07A1 1 0 0121 8.868V15.13a1 1 0 01-1.447.9L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" />
+                  </svg>
+                  Enable Webcam &amp; Start Interview
+                </button>
+                <button
+                  onClick={() => setActiveTab('overview')}
+                  className="w-full py-2.5 rounded-xl bg-slate-800/60 hover:bg-slate-800 text-slate-400 hover:text-slate-200 font-semibold text-xs transition-all cursor-pointer"
+                >
+                  ← Go Back
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
