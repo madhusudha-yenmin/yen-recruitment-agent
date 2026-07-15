@@ -153,7 +153,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
     } catch (e) {
       wsUrl = apiUrl.replace(/^http/, 'ws') + '/api/v1/recruitment/ws';
     }
-    
+
     let socket: WebSocket | null = null;
     let reconnectTimeout: any = null;
 
@@ -358,7 +358,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
       // Build the list of NEW candidates synchronously from API data (before setCandidates,
       // because the setCandidates updater closure runs asynchronously and may be batched by React)
       const existingEmails = new Set(candidates.map(c => c.email));
-      const existingNames  = new Set(candidates.map(c => c.name));
+      const existingNames = new Set(candidates.map(c => c.name));
 
       const newlyAddedCandidates: CandidateMatch[] = data
         .filter((res: any) => !existingEmails.has(res.parsed.email) && !existingNames.has(res.parsed.name))
@@ -1564,7 +1564,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                           type="text"
                           value={uploadProposedDates}
                           onChange={(e) => setUploadProposedDates(e.target.value)}
-                          placeholder="e.g. Aug 15, Aug 16"
+                          placeholder="e.g. Jul 19, Jul 20  or 2026-07-19, 2026-07-20 (ISO)"
                           className="w-full bg-slate-900/50 border border-slate-800 rounded-xl px-4 py-3 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
                         />
                         <p className="text-[10px] text-slate-500 leading-tight">These dates will be sent to candidates who score &gt; 50%. Leave blank to skip automatic scheduling.</p>
@@ -2232,7 +2232,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                     {(() => {
                       const filteredList = candidates.filter((c) => {
                         if (!c.interviewDate) return false;
-                        
+
                         let candDayNum: number | null = null;
                         const matchJuly = c.interviewDate.match(/July (\d+)/);
                         if (matchJuly) {
@@ -2243,11 +2243,11 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                             candDayNum = parseInt(matchIso[1], 10);
                           }
                         }
-                        
+
                         if (candDayNum !== null && candDayNum < todayDay) return false;
-                        
+
                         if (calendarFilter !== 'all' && c.interviewStatus !== calendarFilter && !(calendarFilter === 'In Progress' && (c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress'))) return false;
-                        
+
                         if (selectedCalendarDay !== null) {
                           const dayStr = `July ${selectedCalendarDay < 10 ? '0' + selectedCalendarDay : selectedCalendarDay}`;
                           const matchDateStr = `2026-07-${selectedCalendarDay < 10 ? '0' + selectedCalendarDay : selectedCalendarDay}`;
@@ -2406,11 +2406,10 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                       setSelectedQuestionnaireCandId(null);
                       fetchDynamicQuestions(true);
                     }}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md ${
-                      selectedQuestionnaireCandId === null
-                        ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white scale-105 border border-pink-400/40'
-                        : 'bg-slate-950 text-slate-300 hover:bg-slate-800/80 border border-slate-800'
-                    }`}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md ${selectedQuestionnaireCandId === null
+                      ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white scale-105 border border-pink-400/40'
+                      : 'bg-slate-950 text-slate-300 hover:bg-slate-800/80 border border-slate-800'
+                      }`}
                   >
                     📄 Role Default ({jobTitle || 'General'})
                   </button>
@@ -2426,11 +2425,10 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                             setSelectedQuestionnaireCandId(cand.id);
                             fetchCandidateSpecificQuestions(cand);
                           }}
-                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 shadow-md ${
-                            isSelected
-                              ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white scale-105 border border-purple-400/40'
-                              : 'bg-slate-950 text-slate-300 hover:bg-slate-800/80 border border-slate-800'
-                          }`}
+                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center space-x-1.5 shadow-md ${isSelected
+                            ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white scale-105 border border-purple-400/40'
+                            : 'bg-slate-950 text-slate-300 hover:bg-slate-800/80 border border-slate-800'
+                            }`}
                         >
                           <span>👤 {cand.name}</span>
                           <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-black/50 text-pink-300 font-mono">
@@ -3276,7 +3274,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
           {/* PROPOSED DATES MODAL */}
           {showProposedDatesModal && candidateToSchedule && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-              <div 
+              <div
                 className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm"
                 onClick={() => setShowProposedDatesModal(false)}
               ></div>
@@ -3288,7 +3286,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                     </svg>
                     Propose Interview Dates
                   </h3>
-                  <button 
+                  <button
                     onClick={() => setShowProposedDatesModal(false)}
                     className="text-slate-500 hover:text-white transition-colors"
                   >
@@ -3297,18 +3295,18 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                     </svg>
                   </button>
                 </div>
-                
+
                 <p className="text-sm text-slate-300 mb-5 leading-relaxed">
                   Provide specific dates (comma-separated) for <span className="font-semibold text-white">{candidateToSchedule.name}</span> to choose from.
                 </p>
-                
+
                 <div className="space-y-4 mb-6">
                   <div>
                     <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
                       Proposed Dates
                     </label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       value={proposedDatesInput}
                       onChange={(e) => setProposedDatesInput(e.target.value)}
                       placeholder="e.g. Jul 20, Jul 21, Jul 22"
@@ -3316,15 +3314,15 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                     />
                   </div>
                 </div>
-                
+
                 <div className="flex items-center justify-end gap-3 pt-2">
-                  <button 
+                  <button
                     onClick={() => setShowProposedDatesModal(false)}
                     className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition-colors"
                   >
                     Cancel
                   </button>
-                  <button 
+                  <button
                     onClick={() => {
                       const datesList = proposedDatesInput.split(',').map(d => d.trim()).filter(d => d);
                       executeScheduleInterview(candidateToSchedule, datesList.length > 0 ? datesList : ['Next 3 Business Days']);

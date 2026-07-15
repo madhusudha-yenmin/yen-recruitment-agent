@@ -132,11 +132,11 @@ async def get_all_candidates(
                 for iv in cand.interviews:
                     if iv.scheduled_at is not None:
                         has_scheduled_interview = True
-                        if iv.transcript and isinstance(iv.transcript, dict) and "resolved_dates" in iv.transcript:
+                        if iv.transcript and isinstance(iv.transcript, dict) and iv.transcript.get("resolved_dates"):
                             dates_str = ", ".join(iv.transcript["resolved_dates"])
                             slots_str = ", ".join(iv.transcript.get("preferred_slots", []))
                             interview_date_str = f"{dates_str} @ {slots_str}"
-                        elif iv.transcript and isinstance(iv.transcript, dict) and "preferred_days" in iv.transcript:
+                        elif iv.transcript and isinstance(iv.transcript, dict) and iv.transcript.get("preferred_days"):
                             days_str = ", ".join(iv.transcript["preferred_days"])
                             slots_str = ", ".join(iv.transcript.get("preferred_slots", []))
                             interview_date_str = f"{days_str} @ {slots_str}"
@@ -409,11 +409,11 @@ async def get_candidate_profile(
                 if iv.scheduled_at is not None:
                     scheduled_at_iso = iv.scheduled_at.isoformat() if hasattr(iv.scheduled_at, "isoformat") else str(iv.scheduled_at)
                     if iv.transcript and isinstance(iv.transcript, dict):
-                        if "resolved_dates" in iv.transcript:
+                        if iv.transcript.get("resolved_dates"):
                             dates_str = ", ".join(iv.transcript["resolved_dates"])
                             slots_str = ", ".join(iv.transcript.get("preferred_slots", []))
                             interview_date_str = f"{dates_str} @ {slots_str}"
-                        elif "preferred_days" in iv.transcript:
+                        elif iv.transcript.get("preferred_days"):
                             days_str = ", ".join(iv.transcript["preferred_days"])
                             slots_str = ", ".join(iv.transcript.get("preferred_slots", []))
                             interview_date_str = f"{days_str} @ {slots_str}"
@@ -472,7 +472,8 @@ async def get_candidate_profile(
                 "skills": skills,
                 "interviewDate": interview_date_str,
                 "scheduledAtISO": scheduled_at_iso,
-                "generatedQuestions": gen_qs
+                "generatedQuestions": gen_qs,
+                "proposedDates": candidate.proposed_dates or []
             }
         }
     except Exception as exc:

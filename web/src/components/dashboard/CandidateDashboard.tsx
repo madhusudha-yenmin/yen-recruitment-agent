@@ -17,8 +17,8 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // Availability Screen State
-  const [selectedDays, setSelectedDays] = useState<string[]>(user.availability?.days || ['Monday', 'Wednesday', 'Friday']);
-  const [selectedSlots, setSelectedSlots] = useState<string[]>(user.availability?.timeSlots || ['9:00 AM - 12:00 PM']);
+  const [selectedDays, setSelectedDays] = useState<string[]>([]);
+  const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [timezone, setTimezone] = useState<string>(user.availability?.timezone || 'IST (UTC+5:30) - Indian Standard Time');
   const [isAvailabilitySaved, setIsAvailabilitySaved] = useState<boolean>(user.availability?.isConfirmed || false);
   const [isSavingAvailability, setIsSavingAvailability] = useState<boolean>(false);
@@ -46,6 +46,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
     interviewDate?: string;
     scheduledAtISO?: string;
     generatedQuestions?: any[];
+    proposedDates?: string[];
   } | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
 
@@ -206,7 +207,11 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
     fetchProfile();
   }, [user.name]);
 
-  const daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+  const defaultDaysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+  const daysOfWeek = (profile?.proposedDates && profile.proposedDates.length > 0)
+    ? profile.proposedDates 
+    : defaultDaysOfWeek;
+
   const timeWindows = [
     '9:00 AM - 12:00 PM',
     '2:00 PM - 5:00 PM'
@@ -737,13 +742,13 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                     <button
                       type="button"
                       onClick={() => {
-                        setSelectedDays(['Monday', 'Wednesday', 'Friday']);
-                        setSelectedSlots(['Morning (09:00 - 12:00 IST)']);
+                        setSelectedDays([]);
+                        setSelectedSlots([]);
                         setIsAvailabilitySaved(false);
                       }}
                       className="px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 text-xs font-semibold transition-all cursor-pointer"
                     >
-                      Reset to Default
+                      Clear Selections
                     </button>
                     <button
                       type="submit"
