@@ -62,7 +62,7 @@ function isSkinTone(r: number, g: number, b: number): boolean {
 function analyzeFrame(
   video: HTMLVideoElement,
   canvas: HTMLCanvasElement,
-): { hasFace: boolean; gazeZone: GazeZone } {
+): { hasFace: boolean; gazeZone: GazeZone; multipleFaces?: boolean } {
   if (video.readyState < 2 || video.videoWidth === 0) {
     return { hasFace: false, gazeZone: 'unknown' };
   }

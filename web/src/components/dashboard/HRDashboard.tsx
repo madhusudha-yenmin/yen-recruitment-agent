@@ -61,13 +61,13 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
   const [interviewSearchQuery, setInterviewSearchQuery] = useState('');
   const [schedulingCandidateId, setSchedulingCandidateId] = useState<string | null>(null);
   const [evalModalCandidate, setEvalModalCandidate] = useState<CandidateMatch | null>(null);
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error'; visible: boolean }>({
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning'; visible: boolean }>({
     message: '',
     type: 'success',
     visible: false
   });
 
-  const showToast = (message: string, type: 'success' | 'error') => {
+  const showToast = (message: string, type: 'success' | 'error' | 'warning') => {
     setToast({ message, type, visible: true });
   };
 

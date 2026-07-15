@@ -99,7 +99,7 @@ function GazeDiagram({ zone }: { zone: GazeZone }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 interface ProctoringPanelProps {
-  videoRef: React.RefObject<HTMLVideoElement>;
+  videoRef: React.RefObject<HTMLVideoElement | null>;
   violations: ProctoringViolation[];
   integrityScore: number;
   isWebcamActive: boolean;
