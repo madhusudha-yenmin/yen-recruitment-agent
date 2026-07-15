@@ -155,11 +155,13 @@ function analyzeFrame(
 
   // Note: video is displayed mirrored (CSS scaleX(-1)) but canvas reads the raw frame,
   // so raw-left = candidate's right and vice-versa.
+  // Safe-center band is extremely narrowed to 46%–54% on X and 45%–55% on Y 
+  // to be highly sensitive for demo purposes (detects slight head shakes/turns).
   let gazeZone: GazeZone = 'center';
-  if      (normX < 0.20) gazeZone = 'right';  // head turned clearly to candidate's right
-  else if (normX > 0.80) gazeZone = 'left';   // head turned clearly to candidate's left
-  else if (normY < 0.15) gazeZone = 'up';     // head raised very high (above monitor level)
-  else if (normY > 0.85) gazeZone = 'down';   // head dropped very low (below desk level)
+  if      (normX < 0.46) gazeZone = 'right';  // head shifted to candidate's right
+  else if (normX > 0.54) gazeZone = 'left';   // head shifted to candidate's left
+  else if (normY < 0.45) gazeZone = 'up';     // head raised up
+  else if (normY > 0.55) gazeZone = 'down';   // head dropped down
 
   return { hasFace, gazeZone, multipleFaces };
 }
@@ -200,9 +202,15 @@ export function useProctoring(isActive: boolean) {
           ...prev,
         ].slice(0, 150), // cap at 150 entries
       );
-      setIntegrityScore(prev =>
-        Math.max(0, prev - (severity === 'high' ? 15 : severity === 'medium' ? 8 : 3)),
-      );
+      setIntegrityScore(prev => {
+        let deduction = severity === 'high' ? 15 : severity === 'medium' ? 8 : 3;
+        
+        if (type === 'looking_away') deduction = 0.5;
+        else if (type === 'face_not_detected') deduction = 2;
+        else if (['multiple_faces', 'tab_switch', 'window_blur'].includes(type)) deduction = 10;
+        
+        return Math.max(0, prev - deduction);
+      });
     },
     [],
   );
@@ -294,19 +302,17 @@ export function useProctoring(isActive: boolean) {
         }
 
         // Gaze-away accumulator.
-        // Fires after 5 continuous seconds outside the 20/80% safe band.
-        // 5 s is long enough to ignore momentary glances (thinking, blinking, adjusting)
-        // but short enough to catch a deliberate sustained look at another screen/phone.
+        // Fires after 3 continuous seconds outside the safe band.
         if (gz !== 'center') {
           if (!gazeAwayStart.current) {
             gazeAwayStart.current = Date.now();
-          } else if (Date.now() - gazeAwayStart.current > 5_000) {
+          } else if (Date.now() - gazeAwayStart.current > 3_000) {
             addViolation(
               'looking_away',
               'medium',
-              `Gaze direction: ${gz} — candidate appears to be looking away from screen for >5 seconds`,
+              `Gaze direction: ${gz} — candidate appears to be looking away from screen for >3 seconds`,
             );
-            gazeAwayStart.current = null; // allow re-fire after another 5 s
+            gazeAwayStart.current = null; // allow re-fire after another 3 s
           }
         } else {
           gazeAwayStart.current = null; // returned to screen — reset timer
@@ -320,12 +326,12 @@ export function useProctoring(isActive: boolean) {
         // Face-absence accumulator
         if (!faceAbsenceStart.current) {
           faceAbsenceStart.current = Date.now();
-        } else if (Date.now() - faceAbsenceStart.current > 5_000) {
-          addViolation('face_not_detected', 'high', 'Face absent from webcam for more than 5 seconds');
+        } else if (Date.now() - faceAbsenceStart.current > 3_000) {
+          addViolation('face_not_detected', 'high', 'Face absent from webcam for more than 3 seconds');
           faceAbsenceStart.current = null;
         }
       }
-    }, 2_000);
+    }, 150);
 
     return () => { if (detectionTimer.current) clearInterval(detectionTimer.current); };
   }, [isActive, isWebcamActive, addViolation]);

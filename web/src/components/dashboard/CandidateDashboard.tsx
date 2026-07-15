@@ -923,7 +923,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                         <p className="text-xs text-slate-400">
                           {isMockInterviewMode
                             ? 'Warm-up studio to test your communication skills (`Distinct from official HR questions`).'
-                            : 'Live step-by-step evaluation. Answer each question carefully before proceeding (`onu mutucathan next question pomutiyum`).'}
+                            : 'Live step-by-step evaluation. Answer each question carefully before proceeding.'}
                         </p>
                       </div>
 
@@ -981,7 +981,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                           <span>🚫 Previous Question (`Locked`)</span>
                         </span>
 
-                        {/* Next button ONLY enabled after answering (`onu mutucathan next question pomutiyum`) */}
+                        {/* Next button ONLY enabled after answering */}
                         {currentQuestionIdx < totalQs - 1 ? (
                           <button
                             type="button"
@@ -996,7 +996,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                               ? 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-emerald-500/25 cursor-pointer transform active:scale-95'
                               : 'bg-slate-900 border border-slate-800 text-slate-500 cursor-not-allowed opacity-50'
                               }`}
-                            title={!isCurrentAnswered ? "Complete current question first (`onu mutucathan next question pomutiyum`)" : "Advance to next question"}
+                            title={!isCurrentAnswered ? "Complete current question first" : "Advance to next question"}
                           >
                             <span>Next Question ➔</span>
                           </button>
@@ -1020,9 +1020,10 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                       </div>
                     </div>
 
-                    {/* Single Active Question Box (High Contrast, Easy to Understand) */}
-                    <div className="p-7 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border-2 border-purple-500/40 shadow-2xl space-y-5 relative overflow-hidden">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                      {/* LEFT: Single Active Question Box (High Contrast, Easy to Understand) */}
+                      <div className="lg:col-span-2 p-7 rounded-3xl bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border-2 border-purple-500/40 shadow-2xl space-y-5 relative overflow-hidden">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
                         <div className="flex items-center gap-3">
                           <span className="w-10 h-10 rounded-2xl bg-purple-500 text-white font-black text-base flex items-center justify-center shrink-0 shadow-lg shadow-purple-500/30">
                             #{currentQuestionIdx + 1}
@@ -1033,7 +1034,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                             </h3>
                             <p className="text-xs text-slate-400 mt-0.5">
                               {isCurrentAnswered
-                                ? '✅ Answer Submitted — Click "Next Question ➔" above to continue (`onu mutucathan next`)'
+                                ? '✅ Answer Submitted — Click "Next Question ➔" above to continue'
                                 : '⏳ Active Evaluation Question — Please submit your response in the box below'}
                             </p>
                           </div>
@@ -1096,6 +1097,19 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                         </form>
                       </div>
                     </div>
+                    {/* RIGHT: Proctoring Panel */}
+                    <div className="w-full shrink-0 sticky top-4">
+                      <ProctoringPanel
+                        videoRef={proctoring.videoRef}
+                        violations={proctoring.violations}
+                        integrityScore={proctoring.integrityScore}
+                        isWebcamActive={proctoring.isWebcamActive}
+                        faceStatus={proctoring.faceStatus}
+                        gazeZone={proctoring.gazeZone}
+                        permissionDenied={proctoring.permissionDenied}
+                      />
+                    </div>
+                  </div>
 
                   </div>
                 );
