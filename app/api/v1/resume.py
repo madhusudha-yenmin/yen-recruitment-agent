@@ -156,6 +156,7 @@ class ScheduleRequest(BaseModel):
     email: str
     name: str
     job_title: str
+    proposed_dates: list[str] = []
 
 
 @router.post("/schedule-interview", status_code=status.HTTP_200_OK)
@@ -197,6 +198,7 @@ async def schedule_interview_api(
         if candidate:
             candidate.status = "shortlisted"
             candidate.current_company = req.job_title
+            candidate.proposed_dates = req.proposed_dates
             
         # Automatic Question Generation via Generation Agent (using ollama_llama from config.json) upon interview schedule
         questions_data = []
@@ -267,7 +269,8 @@ async def schedule_interview_api(
             candidate_email=req.email,
             job_role=req.job_title,
             otp_password=otp_password,
-            interview_link=f"{settings.CANDIDATE_PORTAL_URL}?email={req.email}"
+            interview_link=f"{settings.CANDIDATE_PORTAL_URL}?email={req.email}",
+            proposed_dates=req.proposed_dates
         )
         
         await db.commit()

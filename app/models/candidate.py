@@ -27,6 +27,7 @@ class Candidate(Base):
     current_company = Column(String(255), nullable=True)
     notice_period = Column(String(100), nullable=True)
     status = Column(String(50), default="new", nullable=False, index=True)
+    proposed_dates = Column(JSONB, nullable=True)
 
     resumes = relationship("Resume", back_populates="candidate")
     skills = relationship("CandidateSkill", back_populates="candidate")

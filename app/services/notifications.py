@@ -50,7 +50,8 @@ async def send_scheduling_email(
     otp_password: str,
     deadline: str = None,
     company_name: str = "YEN AI",
-    interview_link: str = "http://localhost:3000/"
+    interview_link: str = "http://localhost:3000/",
+    proposed_dates: list[str] = None
 ):
     if not deadline:
         # Default deadline: 3 days from now
@@ -66,6 +67,18 @@ async def send_scheduling_email(
         with open(template_path, "r", encoding="utf-8") as f:
             template_str = f.read()
         
+        proposed_dates_html = ""
+        if proposed_dates:
+            dates_li = "".join([f"<li><strong>{d}</strong></li>" for d in proposed_dates])
+            proposed_dates_html = f"""
+            <div style="background-color: #e0e7ff; padding: 16px; border-radius: 8px; margin-bottom: 24px; border: 1px solid #c7d2fe;">
+                <p style="margin-top: 0; margin-bottom: 8px; color: #3730a3; font-weight: 600;">Proposed Interview Dates:</p>
+                <ul style="margin: 0; padding-left: 20px; color: #312e81;">
+                    {dates_li}
+                </ul>
+            </div>
+            """
+
         # Populate template placeholders using string.Template to avoid CSS brace formatting KeyError issues
         t = Template(template_str)
         html_content = t.safe_substitute(
@@ -75,7 +88,8 @@ async def send_scheduling_email(
             deadline=deadline,
             interview_link=interview_link,
             candidate_email=candidate_email,
-            otp_password=otp_password
+            otp_password=otp_password,
+            proposed_dates_html=proposed_dates_html
         )
     except Exception as template_err:
         logger.error(f"Failed to load or format email HTML template: {template_err}")

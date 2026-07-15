@@ -226,16 +226,26 @@ def _extract_phone(text: str) -> Optional[str]:
 
 
 def _extract_linkedin(text: str) -> Optional[str]:
-    match = re.search(r'(?i)\b(?:linkedin\.com/in/|linkedin\.com/pub/)([a-zA-Z0-9_\-\u00C0-\u00FF]+)', text)
+    match = re.search(r'(?i)\blinkedin\.com/(?:in/|pub/)?([a-zA-Z0-9_\-\u00C0-\u00FF]+)', text)
     if match:
-        return f"https://www.linkedin.com/in/{match.group(1)}"
+        handle = match.group(1)
+        # Clean up common PDF parsing concatenation artifacts
+        handle = re.sub(r'(?i)(created|page\d*|resume|email|phone|mobile|contact|github|portfolio|website)$', '', handle)
+        handle = handle.rstrip('-_')
+        if handle:
+            return f"https://www.linkedin.com/in/{handle}"
     return None
 
 
 def _extract_github(text: str) -> Optional[str]:
     match = re.search(r'(?i)\bgithub\.com/([a-zA-Z0-9_\-]+)', text)
     if match:
-        return f"https://github.com/{match.group(1)}"
+        handle = match.group(1)
+        # Clean up common PDF parsing concatenation artifacts
+        handle = re.sub(r'(?i)(created|page\d*|resume|email|phone|mobile|contact|linkedin|portfolio|website)$', '', handle)
+        handle = handle.rstrip('-_')
+        if handle:
+            return f"https://github.com/{handle}"
     return None
 
 
