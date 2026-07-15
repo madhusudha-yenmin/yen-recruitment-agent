@@ -1,4 +1,5 @@
 import uuid
+import re
 import logging
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel
@@ -32,7 +33,11 @@ class StartRecruitmentRequest(BaseModel):
 class ApprovalDecisionRequest(BaseModel):
     decision: str  # approved, rejected, hold
     reviewer_id: Optional[str] = None
-    comments: Optional[str] = None
+class CandidateStatusUpdateRequest(BaseModel):
+    status: str
+    email: Optional[str] = None
+    name: Optional[str] = None
+    job_title: Optional[str] = None
 
 
 class SerperSearchRequest(BaseModel):
@@ -132,14 +137,21 @@ async def get_all_candidates(
                 for iv in cand.interviews:
                     if iv.scheduled_at is not None:
                         has_scheduled_interview = True
-                        if iv.transcript and isinstance(iv.transcript, dict) and iv.transcript.get("resolved_dates"):
-                            dates_str = ", ".join(iv.transcript["resolved_dates"])
-                            slots_str = ", ".join(iv.transcript.get("preferred_slots", []))
+                        if iv.transcript and isinstance(iv.transcript, dict) and (iv.transcript.get("resolved_dates") or iv.transcript.get("preferred_days")):
+                            p_days = iv.transcript.get("preferred_days", [])
+                            r_dates = iv.transcript.get("resolved_dates", [])
+                            slots = iv.transcript.get("preferred_slots", [])
+                            all_days = list(p_days) + list(r_dates)
+                            extra_days = []
+                            for d in all_days:
+                                m = re.search(r'(?:Jul|July|07)[\s\-]?(\d{1,2})', str(d), re.IGNORECASE)
+                                if m:
+                                    dnum = int(m.group(1))
+                                    extra_days.extend([f"July {dnum}", f"Jul {dnum}", f"2026-07-{dnum:02d}"])
+                            all_days = sorted(list(set(all_days + extra_days)))
+                            dates_str = ", ".join(all_days) if all_days else iv.scheduled_at.strftime("%Y-%m-%d")
+                            slots_str = ", ".join(slots) if slots else iv.scheduled_at.strftime("%I:%M %p UTC")
                             interview_date_str = f"{dates_str} @ {slots_str}"
-                        elif iv.transcript and isinstance(iv.transcript, dict) and iv.transcript.get("preferred_days"):
-                            days_str = ", ".join(iv.transcript["preferred_days"])
-                            slots_str = ", ".join(iv.transcript.get("preferred_slots", []))
-                            interview_date_str = f"{days_str} @ {slots_str}"
                         else:
                             interview_date_str = iv.scheduled_at.strftime("%Y-%m-%d @ %I:%M %p UTC")
                         break
@@ -237,6 +249,13 @@ async def get_all_candidates(
                     eval_det = latest_res.parsed_metadata.get("evaluation_details", {})
                     syn_rep = latest_res.parsed_metadata.get("synthesis_report", "")
 
+            if cand.status in ["Approved", "Rejected", "Offer Sent"]:
+                cand_status = cand.status
+                interview_status = "Completed"
+            elif cand.status in ["Hold", "Evaluated"] or len(sub_ans) > 0 or any(getattr(iv, "status", "") == "Completed" for iv in getattr(cand, "interviews", [])):
+                cand_status = "Hold" # Directs to Review column under Approval/Reject on HR screen
+                interview_status = "Completed"
+
             candidates_list.append({
                 "id": str(cand.id),
                 "name": cand.name or "Unknown Candidate",
@@ -275,6 +294,55 @@ async def get_all_candidates(
             "status": "error",
             "candidates": []
         }
+
+
+@router.post("/candidates/{candidate_id}/status")
+async def update_candidate_status_and_notify(
+    candidate_id: str,
+    req: CandidateStatusUpdateRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """Updates candidate status in DB and sends actual approval/rejection email via FastMail."""
+    cand = None
+    try:
+        cand_uuid = uuid.UUID(candidate_id)
+        stmt = select(Candidate).where(Candidate.id == cand_uuid)
+        res = await db.execute(stmt)
+        cand = res.scalar_one_or_none()
+        if cand:
+            cand.status = req.status
+            await db.commit()
+    except Exception as e:
+        logger.warning(f"Could not update DB candidate {candidate_id} status: {e}")
+
+    # Determine recipient details
+    name = req.name or (cand.name if cand else f"Candidate {candidate_id}")
+    email = req.email or (cand.email if cand else "candidate@yen.ai")
+    job_title = req.job_title or "AI Engineer"
+
+    notif_type = None
+    if req.status in ["Approved", "Offer Sent"]:
+        notif_type = "offer_email"
+    elif req.status in ["Rejected"]:
+        notif_type = "rejection_email"
+
+    email_res = None
+    if notif_type:
+        from app.services.notifications import send_notification
+        email_res = await send_notification(
+            candidate_name=name,
+            candidate_email=email,
+            notif_type=notif_type,
+            job_title=job_title,
+            extra_data={"company_name": "YEN AI", "salary": "Competitive Package"}
+        )
+
+    return {
+        "status": "success",
+        "updated_status": req.status,
+        "candidate_id": candidate_id,
+        "notification": email_res
+    }
 
 
 @router.post("/start", status_code=status.HTTP_202_ACCEPTED)
@@ -541,9 +609,16 @@ async def confirm_candidate_availability(
                         delta = 7
                     item_date = now + timedelta(days=delta)
                     resolved_dates.append(item_date.strftime("%Y-%m-%d"))
+                else:
+                    m = re.search(r'(?:Jul|July|07)[\s\-]?(\d{1,2})', str(d), re.IGNORECASE)
+                    if m:
+                        dnum = int(m.group(1))
+                        resolved_dates.append(f"2026-07-{dnum:02d}")
+                    elif re.search(r'2026-(\d{2})-(\d{2})', str(d)):
+                        resolved_dates.append(str(d))
             
             # Sort resolved dates chronologically
-            resolved_dates.sort()
+            resolved_dates = sorted(list(set(resolved_dates)))
             
             # Use the earliest date as the primary scheduled date
             day_indices = [DAY_MAP[d] for d in req.days if d in DAY_MAP]
@@ -561,16 +636,41 @@ async def confirm_candidate_availability(
             elif "evening" in first_slot:
                 hour = 18
 
-        scheduled_date = now + timedelta(days=min_delta)
-        scheduled_at = datetime(
-            year=scheduled_date.year,
-            month=scheduled_date.month,
-            day=scheduled_date.day,
-            hour=hour,
-            minute=0,
-            second=0,
-            tzinfo=dt_timezone.utc
-        )
+        if resolved_dates:
+            earliest_date_str = resolved_dates[0]
+            try:
+                dt_parts = [int(p) for p in earliest_date_str.split('-')]
+                scheduled_at = datetime(
+                    year=dt_parts[0],
+                    month=dt_parts[1],
+                    day=dt_parts[2],
+                    hour=hour,
+                    minute=0,
+                    second=0,
+                    tzinfo=dt_timezone.utc
+                )
+            except Exception:
+                scheduled_date = now + timedelta(days=min_delta)
+                scheduled_at = datetime(
+                    year=scheduled_date.year,
+                    month=scheduled_date.month,
+                    day=scheduled_date.day,
+                    hour=hour,
+                    minute=0,
+                    second=0,
+                    tzinfo=dt_timezone.utc
+                )
+        else:
+            scheduled_date = now + timedelta(days=min_delta)
+            scheduled_at = datetime(
+                year=scheduled_date.year,
+                month=scheduled_date.month,
+                day=scheduled_date.day,
+                hour=hour,
+                minute=0,
+                second=0,
+                tzinfo=dt_timezone.utc
+            )
 
         # Upsert interview record
         interview = None

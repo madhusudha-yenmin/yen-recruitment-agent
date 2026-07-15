@@ -241,8 +241,8 @@ async def submit_assessment_answers(req: SubmitAssessmentAnswersRequest, db: Asy
         p_meta["synthesis_report"] = synthesis_report
         latest_res.parsed_metadata = p_meta
         
-    if req.is_final or count >= 10:
-        cand.status = "Pending HR Review"
+    if req.is_final or count >= 1:
+        cand.status = "Hold" # Places candidate under Review column in HR Approval/Reject board
         
     await db.commit()
     

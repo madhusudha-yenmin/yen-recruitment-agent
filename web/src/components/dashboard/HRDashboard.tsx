@@ -81,7 +81,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
   }, [toast.visible]);
 
   // JD Upload & Orchestrator State
-  const [jobTitle, setJobTitle] = useState('React Developer');
+  const [jobTitle, setJobTitle] = useState('');
   const [experience, setExperience] = useState('1+ years');
   const [location, setLocation] = useState('Chennai');
   const [keywords, setKeywords] = useState('');
@@ -213,6 +213,10 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
   const [newQuestionCat, setNewQuestionCat] = useState("Technical / Core Stack");
 
   const fetchDynamicQuestions = async (forceRegenerate = false) => {
+    if (!jobTitle.trim() && selectedQuestionnaireCandId === null) {
+      setQuestions([]);
+      return;
+    }
     if (questions.length > 0 && !forceRegenerate && lastGeneratedRole === jobTitle) return;
     setIsGeneratingQuestions(true);
     try {
@@ -255,6 +259,50 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
     }
   };
 
+  const isCandidateEligibleForQuestionSets = (c: any) => {
+    if (!c) return false;
+    if (c.status === 'Rejected') return false;
+    if (
+      c.interviewStatus === 'Completed' ||
+      c.status === 'Completed' ||
+      c.interviewStatus === 'Evaluating' ||
+      c.status === 'Evaluating' ||
+      c.interviewStatus === 'Evaluated' ||
+      c.status === 'Evaluated' ||
+      (c.submittedAnswers && Object.keys(c.submittedAnswers).length > 0) ||
+      (c.evaluations && c.evaluations.length > 0)
+    ) {
+      return false;
+    }
+
+    const isScheduled = c.interviewStatus === 'Scheduled' ||
+      c.status === 'Scheduled' ||
+      c.status === 'Pending HR Review';
+    if (!isScheduled) return false;
+
+    // Filter by role/requisition match (`enna role la iruko antha same role la candidate matum kattu`)
+    const activeRole = (jobTitle || '').toLowerCase().trim();
+    if (activeRole && activeRole !== 'general') {
+      const candRole = (c.role || c.jobTitle || c.appliedRole || '').toLowerCase().trim();
+      const activeWords = activeRole.split(/\s+/).filter((w: string) => w.length > 2 && !['developer', 'engineer', 'specialist', 'senior', 'junior', 'lead', 'core'].includes(w));
+
+      if (candRole) {
+        if (activeRole !== candRole && !activeRole.includes(candRole) && !candRole.includes(activeRole)) {
+          const candWords = candRole.split(/\s+/).filter((w: string) => w.length > 2 && !['developer', 'engineer', 'specialist', 'senior', 'junior', 'lead', 'core'].includes(w));
+          const hasCommonWord = activeWords.some((w: string) => candWords.includes(w)) || candWords.some((w: string) => activeWords.includes(w));
+          if (!hasCommonWord) return false;
+        }
+      } else if (activeWords.length > 0 && c.skills && Array.isArray(c.skills)) {
+        // If candidate role is missing but skills exist, check if skills align with activeRole keywords
+        const skillsText = c.skills.join(' ').toLowerCase();
+        const hasSkillMatch = activeWords.some((w: string) => skillsText.includes(w));
+        if (!hasSkillMatch) return false;
+      }
+    }
+
+    return true;
+  };
+
   const fetchCandidateSpecificQuestions = async (cand: any) => {
     if (cand.generatedQuestions && cand.generatedQuestions.length > 0) {
       setQuestions(cand.generatedQuestions);
@@ -292,18 +340,22 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
     if (activeTab === 'questionnaire') {
       if (selectedQuestionnaireCandId !== null) {
         const selectedCand = candidates.find(c => c.id === selectedQuestionnaireCandId);
-        if (selectedCand) {
+        if (selectedCand && isCandidateEligibleForQuestionSets(selectedCand)) {
           fetchCandidateSpecificQuestions(selectedCand);
           return;
+        } else if (selectedCand && !isCandidateEligibleForQuestionSets(selectedCand)) {
+          setSelectedQuestionnaireCandId(null);
         }
       }
-      const firstWithQs = candidates.find(c => (c.generatedQuestions && c.generatedQuestions.length > 0) || c.interviewStatus === 'Scheduled' || c.status === 'Pending HR Review');
-      if (firstWithQs && selectedQuestionnaireCandId === null && questions.length === 0) {
-        setSelectedQuestionnaireCandId(firstWithQs.id);
-        fetchCandidateSpecificQuestions(firstWithQs);
-      } else if (lastGeneratedRole !== jobTitle || questions.length === 0) {
+      const firstEligible = candidates.find(c => isCandidateEligibleForQuestionSets(c));
+      if (firstEligible && selectedQuestionnaireCandId === null && questions.length === 0) {
+        setSelectedQuestionnaireCandId(firstEligible.id);
+        fetchCandidateSpecificQuestions(firstEligible);
+      } else if (jobTitle.trim() && (lastGeneratedRole !== jobTitle || questions.length === 0)) {
         setSelectedQuestionnaireCandId(null);
         fetchDynamicQuestions(true);
+      } else if (!jobTitle.trim() && selectedQuestionnaireCandId === null) {
+        setQuestions([]);
       }
     }
   }, [activeTab, jobTitle, selectedQuestionnaireCandId]);
@@ -748,6 +800,21 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
     }));
 
     const targetCand = candidates.find(c => c.id === candidateId);
+    if (decision === 'Offer Sent' || decision === 'Rejected') {
+      fetch(`http://localhost:8000/api/v1/recruitment/candidates/${candidateId}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: decision === 'Offer Sent' ? 'Approved' : 'Rejected',
+          name: targetCand?.name,
+          email: targetCand?.email,
+          job_title: targetCand?.role
+        })
+      }).then(() => {
+        showToast(`📧 Dispatched automated ${decision === 'Offer Sent' ? 'Approval / Offer' : 'Rejection'} email to ${targetCand?.email || 'candidate'}`, 'success');
+      }).catch(err => console.error("Error sending notification email:", err));
+    }
+
     setLogs(prev => [
       {
         id: `log-${Date.now()}`,
@@ -867,12 +934,27 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
     setCandidates(prev => prev.map(c => c.id === candId ? { ...c, status: targetCol } : c));
     setDraggedCandId(null);
 
+    if (targetCol === 'Offer Sent' || targetCol === 'Rejected') {
+      fetch(`http://localhost:8000/api/v1/recruitment/candidates/${candId}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: targetCol === 'Offer Sent' ? 'Approved' : targetCol,
+          name: cand.name,
+          email: cand.email,
+          job_title: cand.role
+        })
+      }).then(() => {
+        showToast(`📧 Dispatched automated ${targetCol === 'Offer Sent' ? 'Approval / Offer' : 'Rejection'} email to ${cand.email || cand.name}`, 'success');
+      }).catch(err => console.error("Error sending notification email on drop:", err));
+    }
+
     setLogs(prev => [
       {
         id: `log-${Date.now()}`,
         timestamp: new Date().toLocaleTimeString(),
         agentName: 'HiringDecisionAgent',
-        action: `HITL Kanban Drag-and-Drop: Candidate '${cand.name}' moved by HR / Agent to '${targetCol}'. ${targetCol === 'Offer Sent' ? 'Automated offer packet dispatched.' : 'Pipeline state synchronized.'}`,
+        action: `HITL Kanban Drag-and-Drop: Candidate '${cand.name}' moved by HR / Agent to '${targetCol}'. ${targetCol === 'Offer Sent' ? 'Automated approval/offer email dispatched to ' + (cand.email || cand.name) + '.' : targetCol === 'Rejected' ? 'Automated rejection email dispatched to ' + (cand.email || cand.name) + '.' : 'Pipeline state synchronized.'}`,
         latency: '140ms',
         tokens: 215,
         cost: '$0.0006',
@@ -1045,7 +1127,11 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
           </div>
 
           <div className="flex items-center space-x-4">
-            <span className="text-xs text-slate-400 hidden sm:inline">Active Requisition: <strong className="text-slate-200">{jobTitle}</strong></span>
+            {jobTitle.trim() && (
+              <span className="text-xs text-slate-400 hidden sm:inline">
+                Active Requisition: <strong className="text-slate-200">{jobTitle.trim()}</strong>
+              </span>
+            )}
             <button
               onClick={() => setActiveTab('upload-jd')}
               className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold text-xs shadow-md shadow-indigo-600/20 transition-all cursor-pointer flex items-center space-x-1.5"
@@ -1255,6 +1341,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                         type="text"
                         required
                         value={jobTitle}
+                        placeholder='e.g., "React Developer"'
                         onChange={(e) => setJobTitle(e.target.value)}
                         className="w-full px-4 py-2.5 rounded-xl bg-slate-950/60 border border-slate-800 text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                       />
@@ -1504,7 +1591,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                         <span>Upload Candidate Resumes</span>
                       </h2>
                       <p className="text-xs text-slate-400 mt-1">
-                        Upload candidate resumes to analyze and score them against the current Requisition: <strong className="text-indigo-400">{jobTitle}</strong>.
+                        Upload candidate resumes to analyze and score them against the current Requisition{jobTitle.trim() ? <>: <strong className="text-indigo-400">{jobTitle.trim()}</strong></> : ''}.
                       </p>
                     </div>
 
@@ -1946,17 +2033,6 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                             )}
                           </div>
                         )}
-                        {((cand.submittedAnswers && Object.keys(cand.submittedAnswers).length > 0) || cand.interviewStatus === 'Completed' || cand.interviewStatus === 'In Progress' || cand.interviewStatus === 'Inprogress') && (
-                          <div className="pt-2">
-                            <button
-                              type="button"
-                              onClick={() => setEvalModalCandidate(cand)}
-                              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 text-white font-extrabold text-xs shadow-lg shadow-purple-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer transform active:scale-95 animate-pulse"
-                            >
-                              <span>📊 View AI Evaluation & Responses</span>
-                            </button>
-                          </div>
-                        )}
                         {cand.interviewStatus === 'Pending' && (
                           <div className="pt-3 border-t border-slate-900 space-y-2">
                             {cand.matchScore > 50 ? (
@@ -2149,11 +2225,19 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                     {Array.from({ length: 31 }, (_, i) => i + 1).map((dayNum) => {
                       const isPast = dayNum < todayDay;
                       const isToday = dayNum === todayDay;
-                      const dayStr = `July ${dayNum < 10 ? '0' + dayNum : dayNum}`;
+                      const dayStrLong = `July ${dayNum < 10 ? '0' + dayNum : dayNum}`;
+                      const dayStrShort = `Jul ${dayNum < 10 ? '0' + dayNum : dayNum}`;
+                      const dayStrLongNoPad = `July ${dayNum}`;
+                      const dayStrShortNoPad = `Jul ${dayNum}`;
                       const matchDateStr = `2026-07-${dayNum < 10 ? '0' + dayNum : dayNum}`;
                       const dayCandidates = isPast ? [] : candidates.filter((c) => {
                         if (!c.interviewDate) return false;
-                        if (!c.interviewDate.includes(dayStr) && !c.interviewDate.includes(matchDateStr)) return false;
+                        const match = c.interviewDate.includes(dayStrLong) ||
+                          c.interviewDate.includes(dayStrShort) ||
+                          c.interviewDate.includes(dayStrLongNoPad) ||
+                          c.interviewDate.includes(dayStrShortNoPad) ||
+                          c.interviewDate.includes(matchDateStr);
+                        if (!match) return false;
                         if (calendarFilter === 'all') return true;
                         if (calendarFilter === 'In Progress') return c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress';
                         return c.interviewStatus === calendarFilter;
@@ -2234,7 +2318,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                         if (!c.interviewDate) return false;
 
                         let candDayNum: number | null = null;
-                        const matchJuly = c.interviewDate.match(/July (\d+)/);
+                        const matchJuly = c.interviewDate.match(/Jul(?:y)?\s*(\d+)/i);
                         if (matchJuly) {
                           candDayNum = parseInt(matchJuly[1], 10);
                         } else {
@@ -2249,9 +2333,16 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                         if (calendarFilter !== 'all' && c.interviewStatus !== calendarFilter && !(calendarFilter === 'In Progress' && (c.interviewStatus === 'In Progress' || c.interviewStatus === 'Inprogress'))) return false;
 
                         if (selectedCalendarDay !== null) {
-                          const dayStr = `July ${selectedCalendarDay < 10 ? '0' + selectedCalendarDay : selectedCalendarDay}`;
+                          const dayStrLong = `July ${selectedCalendarDay < 10 ? '0' + selectedCalendarDay : selectedCalendarDay}`;
+                          const dayStrShort = `Jul ${selectedCalendarDay < 10 ? '0' + selectedCalendarDay : selectedCalendarDay}`;
+                          const dayStrLongNoPad = `July ${selectedCalendarDay}`;
+                          const dayStrShortNoPad = `Jul ${selectedCalendarDay}`;
                           const matchDateStr = `2026-07-${selectedCalendarDay < 10 ? '0' + selectedCalendarDay : selectedCalendarDay}`;
-                          return c.interviewDate.includes(dayStr) || c.interviewDate.includes(matchDateStr);
+                          return c.interviewDate.includes(dayStrLong) ||
+                            c.interviewDate.includes(dayStrShort) ||
+                            c.interviewDate.includes(dayStrLongNoPad) ||
+                            c.interviewDate.includes(dayStrShortNoPad) ||
+                            c.interviewDate.includes(matchDateStr);
                         }
                         return true;
                       });
@@ -2400,21 +2491,23 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                   <span className="text-xs font-extrabold text-slate-400 mr-1 flex items-center">
                     <span className="text-pink-400 mr-1">⚡</span> Auto-Synthesized Question Sets:
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedQuestionnaireCandId(null);
-                      fetchDynamicQuestions(true);
-                    }}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md ${selectedQuestionnaireCandId === null
-                      ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white scale-105 border border-pink-400/40'
-                      : 'bg-slate-950 text-slate-300 hover:bg-slate-800/80 border border-slate-800'
-                      }`}
-                  >
-                    📄 Role Default ({jobTitle || 'General'})
-                  </button>
+                  {jobTitle.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedQuestionnaireCandId(null);
+                        fetchDynamicQuestions(true);
+                      }}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md ${selectedQuestionnaireCandId === null
+                        ? 'bg-gradient-to-r from-pink-600 to-purple-600 text-white scale-105 border border-pink-400/40'
+                        : 'bg-slate-950 text-slate-300 hover:bg-slate-800/80 border border-slate-800'
+                        }`}
+                    >
+                      📄 Role Default ({jobTitle.trim()})
+                    </button>
+                  )}
                   {candidates
-                    .filter(c => c.status !== 'Rejected')
+                    .filter(c => isCandidateEligibleForQuestionSets(c))
                     .map(cand => {
                       const isSelected = selectedQuestionnaireCandId === cand.id;
                       return (
@@ -2506,7 +2599,15 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
 
               {/* Clean, Neat Single-Column Question Cards List */}
               <div className="space-y-3">
-                {isGeneratingQuestions && questions.length === 0 ? (
+                {!jobTitle.trim() && selectedQuestionnaireCandId === null ? (
+                  <div className="p-12 rounded-3xl bg-slate-900/40 border border-slate-800/80 text-center space-y-4">
+                    <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 font-black text-xl mx-auto">🎯</div>
+                    <div>
+                      <h4 className="text-base font-extrabold text-white">No Requisition Role Specified</h4>
+                      <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">Please enter a <strong className="text-pink-400">Requisition Job Title</strong> (e.g., "React Developer") in the input box or select a scheduled candidate to synthesize questions.</p>
+                    </div>
+                  </div>
+                ) : isGeneratingQuestions && questions.length === 0 ? (
                   <div className="p-12 rounded-3xl bg-slate-900/40 border border-slate-800/80 text-center space-y-4 animate-in fade-in">
                     <div className="w-10 h-10 border-4 border-pink-500/30 border-t-pink-500 rounded-full animate-spin mx-auto" />
                     <div>
@@ -2666,19 +2767,6 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                                       <h4 className="text-xs font-bold text-white group-hover:text-indigo-300 transition-colors">
                                         {cand.name}
                                       </h4>
-                                      {cand.linkedinUrl && col.id !== 'Pending HR Review' && col.title !== 'Scheduled' && col.id !== 'Applied' && col.title !== 'Candidates' && (
-                                        <a
-                                          href={cand.linkedinUrl}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="px-2 py-0.5 rounded-full bg-[#0A66C2]/10 text-[#0A66C2] text-[10px] font-bold hover:bg-[#0A66C2]/20 transition-colors flex items-center space-x-1 border border-[#0A66C2]/30 shrink-0"
-                                        >
-                                          <span>Connect</span>
-                                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                          </svg>
-                                        </a>
-                                      )}
                                     </div>
                                     <p className="text-[10px] text-slate-400 mt-0.5 font-medium">{cand.role || 'AI Backend Engineer'}</p>
                                   </div>
@@ -2691,8 +2779,8 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                                         <span className="font-mono font-extrabold">{cand.matchScore}%</span>
                                       </div>
                                     ) : (
-                                      <div className="flex items-center justify-between px-2.5 py-1 rounded-lg bg-indigo-500/15 border border-indigo-500/30 text-[11px] font-bold text-indigo-300">
-                                        <span className="text-[10px] font-medium text-indigo-300/80">Interview Score</span>
+                                      <div className="flex items-center justify-between px-2.5 py-1 rounded-lg bg-pink-500/15 border border-pink-500/30 text-[11px] font-bold text-pink-300">
+                                        <span className="text-[10px] font-medium text-pink-300/80">Interview Score</span>
                                         <span className="font-mono font-extrabold">{cand.evaluationDetails?.overall || cand.matchScore}%</span>
                                       </div>
                                     )}
@@ -2721,6 +2809,19 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                                   <span className="text-slate-500 font-medium">Experience</span>
                                   <span className="text-slate-300 font-semibold">{cand.experience}</span>
                                 </div>
+
+                                {((cand.submittedAnswers && Object.keys(cand.submittedAnswers).length > 0) || cand.interviewStatus === 'Completed' || cand.status === 'Hold') && (col.id === 'Hold' || col.title === 'Review') && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setEvalModalCandidate(cand);
+                                    }}
+                                    className="w-full mt-2 px-3 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 text-white font-extrabold text-[11px] shadow-md transition-all cursor-pointer flex items-center justify-center space-x-1 animate-pulse"
+                                  >
+                                    <span>📊 View AI Evaluation & Responses</span>
+                                  </button>
+                                )}
                               </div>
                             ))
                           )}
@@ -3214,16 +3315,6 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                   </button>
 
                   <div className="flex items-center gap-3 w-full sm:w-auto">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        showToast(`Initiated deep evaluation sync for ${evalModalCandidate.name}...`, 'success');
-                      }}
-                      className="px-4 py-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-slate-300 hover:text-white font-semibold text-xs transition-colors cursor-pointer w-full sm:w-auto text-center"
-                    >
-                      <span>🔄 Re-verify Critic Score</span>
-                    </button>
-
                     <button
                       type="button"
                       onClick={() => {
