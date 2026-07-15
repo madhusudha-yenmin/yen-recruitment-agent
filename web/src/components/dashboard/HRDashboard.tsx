@@ -23,13 +23,23 @@ const formatSchedule = (scheduleStr?: string) => {
   }
 
   try {
-    const d = new Date(datePart);
-    if (!isNaN(d.getTime())) {
-      const day = d.getDate();
-      const month = d.getMonth() + 1;
-      const year = d.getFullYear().toString().slice(-2);
-      datePart = `${day}/${month}/${year}`;
-    }
+    // If there are multiple comma-separated dates, format them individually
+    const dates = datePart.split(',').map(s => s.trim());
+    const formattedDates = dates.map(dStr => {
+      // Only attempt to parse standard database dates (e.g., YYYY-MM-DD)
+      // Custom HR strings like "Jul 19" should be left exactly as they typed it
+      if (dStr.match(/^\d{4}-\d{2}-\d{2}/)) {
+        const d = new Date(dStr);
+        if (!isNaN(d.getTime())) {
+          const day = d.getDate();
+          const month = d.getMonth() + 1;
+          const year = d.getFullYear().toString().slice(-2);
+          return `${day}/${month}/${year}`;
+        }
+      }
+      return dStr; // Return custom strings as is (e.g. "Jul 19")
+    });
+    datePart = formattedDates.join(', ');
   } catch (e) {
     // keep as is if unparseable
   }
@@ -110,6 +120,9 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
 
   // Candidate Pool State (Mapped from Database)
   const [candidates, setCandidates] = useState<CandidateMatch[]>([]);
+  const [showProposedDatesModal, setShowProposedDatesModal] = useState(false);
+  const [candidateToSchedule, setCandidateToSchedule] = useState<CandidateMatch | null>(null);
+  const [proposedDatesInput, setProposedDatesInput] = useState<string>('');
 
   useEffect(() => {
     const fetchCandidates = async () => {
@@ -299,6 +312,8 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
   const [selectedResumes, setSelectedResumes] = useState<File[]>([]);
   const [parsedResumes, setParsedResumes] = useState<any[]>([]);
   const [isParsing, setIsParsing] = useState(false);
+  const [parsingStatusText, setParsingStatusText] = useState('Analyzing Resumes...');
+  const [uploadProposedDates, setUploadProposedDates] = useState('');
 
   const handleResumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -316,6 +331,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
     if (selectedResumes.length === 0) return;
 
     setIsParsing(true);
+    setParsingStatusText('Analyzing Resumes...');
     const formData = new FormData();
     selectedResumes.forEach(file => {
       formData.append('files', file);
@@ -350,7 +366,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
           id: res.candidate_id,
           name: res.parsed.name || 'Unknown Candidate',
           email: res.parsed.email || 'no-email@example.com',
-          linkedinUrl: '',
+          linkedinUrl: res.parsed.linkedin || '',
           matchScore: Math.round(res.ats_score),
           ranking: 0,
           skills: res.parsed.skills.length > 0 ? res.parsed.skills : ['Parsed Candidate'],
@@ -375,48 +391,53 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
           .map((c, index) => ({ ...c, ranking: index + 1 }));
       });
 
-      // Auto-send scheduling email ONLY for candidates with ATS score > 50%
-      const autoEmailCandidates = newlyAddedCandidates.filter(c => c.matchScore > 50);
-      const belowThresholdCandidates = newlyAddedCandidates.filter(c => c.matchScore <= 50);
+      // Auto-send scheduling email ONLY if candidate ATS score > 50%
+      if (uploadProposedDates.trim()) {
+        const autoEmailCandidates = newlyAddedCandidates.filter(c => c.matchScore > 50);
+        const belowThresholdCandidates = newlyAddedCandidates.filter(c => c.matchScore <= 50);
 
-      // Log what emails are being sent for transparency
-      console.log('[AutoEmail] Qualified (>50%):', autoEmailCandidates.map(c => `${c.name} <${c.email}> ${c.matchScore}%`));
-      console.log('[AutoEmail] Below threshold (<=50%):', belowThresholdCandidates.map(c => `${c.name} <${c.email}> ${c.matchScore}%`));
+        // Log what emails are being sent for transparency
+        console.log('[AutoEmail] Qualified (>50%):', autoEmailCandidates.map(c => `${c.name} <${c.email}> ${c.matchScore}%`));
+        console.log('[AutoEmail] Below threshold (<=50%):', belowThresholdCandidates.map(c => `${c.name} <${c.email}> ${c.matchScore}%`));
 
-      if (autoEmailCandidates.length > 0) {
-        setLogs(prev => [
-          {
-            id: `log-${Date.now()}-auto-email`,
-            timestamp: new Date().toLocaleTimeString(),
-            agentName: 'RecruitmentOrchestrator',
-            action: `Auto-dispatching interview invitation emails to ${autoEmailCandidates.length} qualified candidate(s) (ATS > 50%). ${belowThresholdCandidates.length > 0 ? `${belowThresholdCandidates.length} candidate(s) below 50% require manual scheduling.` : ''}`,
-            latency: '0ms',
-            tokens: 0,
-            cost: '$0.00',
-            status: 'success'
-          },
-          ...prev
-        ]);
-        // Fire emails in parallel for qualified candidates only
-        autoEmailCandidates.forEach(cand => {
-          handleScheduleInterview(cand);
-        });
-      }
+        if (autoEmailCandidates.length > 0) {
+          setLogs(prev => [
+            {
+              id: `log-${Date.now()}-auto-email`,
+              timestamp: new Date().toLocaleTimeString(),
+              agentName: 'RecruitmentOrchestrator',
+              action: `Auto-dispatching interview invitation emails to ${autoEmailCandidates.length} qualified candidate(s) (ATS > 50%). ${belowThresholdCandidates.length > 0 ? `${belowThresholdCandidates.length} candidate(s) below 50% require manual scheduling.` : ''}`,
+              latency: '0ms',
+              tokens: 0,
+              cost: '$0.00',
+              status: 'success'
+            },
+            ...prev
+          ]);
 
-      if (belowThresholdCandidates.length > 0) {
-        setLogs(prev => [
-          {
-            id: `log-${Date.now()}-below-threshold`,
-            timestamp: new Date().toLocaleTimeString(),
-            agentName: 'RecruitmentOrchestrator',
-            action: `${belowThresholdCandidates.length} candidate(s) have ATS score ≤ 50% (${belowThresholdCandidates.map(c => `${c.name}: ${c.matchScore}%`).join(', ')}). Manual scheduling available via Interview Status tab.`,
-            latency: '0ms',
-            tokens: 0,
-            cost: '$0.00',
-            status: 'warning'
-          },
-          ...prev
-        ]);
+          const autoDates = uploadProposedDates.split(',').map(d => d.trim()).filter(Boolean);
+
+          setParsingStatusText('Sending Interview Invites...');
+          // Fire emails in parallel and wait for all to complete
+          const emailPromises = autoEmailCandidates.map(cand => executeScheduleInterview(cand, autoDates));
+          await Promise.all(emailPromises);
+        }
+
+        if (belowThresholdCandidates.length > 0) {
+          setLogs(prev => [
+            {
+              id: `log-${Date.now()}-below-threshold`,
+              timestamp: new Date().toLocaleTimeString(),
+              agentName: 'RecruitmentOrchestrator',
+              action: `${belowThresholdCandidates.length} candidate(s) have ATS score ≤ 50% (${belowThresholdCandidates.map(c => `${c.name}: ${c.matchScore}%`).join(', ')}). Manual scheduling available via Interview Status tab.`,
+              latency: '0ms',
+              tokens: 0,
+              cost: '$0.00',
+              status: 'warning'
+            },
+            ...prev
+          ]);
+        }
       }
 
       setLogs(prev => [
@@ -463,7 +484,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
       id: res.candidate_id,
       name: res.parsed.name || "Unknown Candidate",
       email: res.parsed.email || "no-email@example.com",
-      linkedinUrl: "", // Local upload, no linkedin URL
+      linkedinUrl: res.parsed.linkedin || "", // Local upload, now mapping linkedin URL
       matchScore: Math.round(res.ats_score),
       ranking: candidates.length + 1,
       skills: res.parsed.skills.length > 0 ? res.parsed.skills : ["Parsed Candidate"],
@@ -521,8 +542,15 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
     setCandidates(prev => prev.map(c => c.id === candId ? { ...c, interviewStatus: newStatus } : c));
   };
 
-  const handleScheduleInterview = async (cand: CandidateMatch) => {
+  const handleScheduleClick = (cand: CandidateMatch) => {
+    setCandidateToSchedule(cand);
+    setProposedDatesInput('Jul 20, Jul 21'); // Example default
+    setShowProposedDatesModal(true);
+  };
+
+  const executeScheduleInterview = async (cand: CandidateMatch, proposedDates: string[]) => {
     setSchedulingCandidateId(cand.id);
+    setShowProposedDatesModal(false);
     try {
       const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/api/v1/resume/schedule-interview`, {
@@ -533,7 +561,8 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
         body: JSON.stringify({
           email: cand.email,
           name: cand.name,
-          job_title: jobTitle
+          job_title: jobTitle,
+          proposed_dates: proposedDates
         })
       });
 
@@ -556,24 +585,37 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
         setSelectedQuestionnaireCandId(cand.id);
       }
 
-      setLogs(prev => [
-        {
-          id: `log-${Date.now()}-sched`,
-          timestamp: new Date().toLocaleTimeString(),
-          agentName: 'RecruitmentOrchestrator',
-          action: `Manually scheduled interview and dispatched credentials to candidate: ${cand.name} (${cand.email})`,
-          latency: '220ms',
-          tokens: 0,
-          cost: '$0.00',
-          status: 'success'
-        },
-        ...prev
-      ]);
-
-      showToast(
-        `Interview scheduled successfully. Credentials sent to ${cand.email}.`,
-        "success"
-      );
+      if (resData.status === 'warning') {
+        setLogs(prev => [
+          {
+            id: `log-${Date.now()}-sched-warn`,
+            timestamp: new Date().toLocaleTimeString(),
+            agentName: 'RecruitmentOrchestrator',
+            action: `Candidate ${cand.name} scheduled, but SMTP email failed. Ensure SMTP credentials are correct.`,
+            latency: '220ms',
+            tokens: 0,
+            cost: '$0.00',
+            status: 'warning'
+          },
+          ...prev
+        ]);
+        showToast(resData.message || "Email delivery failed.", "warning");
+      } else {
+        setLogs(prev => [
+          {
+            id: `log-${Date.now()}-sched`,
+            timestamp: new Date().toLocaleTimeString(),
+            agentName: 'RecruitmentOrchestrator',
+            action: `Manually scheduled interview and dispatched credentials to candidate: ${cand.name} (${cand.email})`,
+            latency: '220ms',
+            tokens: 0,
+            cost: '$0.00',
+            status: 'success'
+          },
+          ...prev
+        ]);
+        showToast(`Interview scheduled successfully. Credentials sent to ${cand.email}.`, "success");
+      }
     } catch (err) {
       console.error("Error scheduling interview:", err);
       showToast(
@@ -653,7 +695,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
           ...prev
         ]);
         autoEmailSerper.forEach(cand => {
-          handleScheduleInterview(cand);
+          handleScheduleClick(cand);
         });
       }
 
@@ -1396,7 +1438,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                               <div className="flex flex-col gap-2 shrink-0">
                                 {cand.interviewStatus === 'Pending' && (
                                   <button
-                                    onClick={() => handleScheduleInterview(cand)}
+                                    onClick={() => handleScheduleClick(cand)}
                                     disabled={schedulingCandidateId === cand.id}
                                     className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-purple-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center min-w-[125px]"
                                   >
@@ -1515,6 +1557,19 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                         </div>
                       )}
 
+                      {/* Proposed Interview Dates Input */}
+                      <div className="space-y-2">
+                        <label className="text-xs font-bold text-slate-300">Proposed Interview Dates (Optional)</label>
+                        <input
+                          type="text"
+                          value={uploadProposedDates}
+                          onChange={(e) => setUploadProposedDates(e.target.value)}
+                          placeholder="e.g. Aug 15, Aug 16"
+                          className="w-full bg-slate-900/50 border border-slate-800 rounded-xl px-4 py-3 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+                        />
+                        <p className="text-[10px] text-slate-500 leading-tight">These dates will be sent to candidates who score &gt; 50%. Leave blank to skip automatic scheduling.</p>
+                      </div>
+
                       <button
                         type="submit"
                         disabled={selectedResumes.length === 0 || isParsing}
@@ -1526,7 +1581,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                             </svg>
-                            <span>Analyzing Resumes...</span>
+                            <span>{parsingStatusText}</span>
                           </>
                         ) : (
                           <span>Analyze & Score Resumes</span>
@@ -1914,7 +1969,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                                   <span className="text-[10px] font-semibold text-emerald-400">Invitation email auto-sent (ATS &gt; 50%)</span>
                                 </div>
                                 <button
-                                  onClick={() => handleScheduleInterview(cand)}
+                                  onClick={() => handleScheduleClick(cand)}
                                   disabled={schedulingCandidateId === cand.id}
                                   className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-purple-500/50 text-slate-300 hover:text-white font-semibold text-xs transition-all cursor-pointer active:scale-95 flex items-center justify-center space-x-1.5 disabled:opacity-70 disabled:cursor-not-allowed"
                                 >
@@ -1946,7 +2001,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                                   <span className="text-[10px] font-semibold text-amber-400">ATS ≤ 50% — manual review needed</span>
                                 </div>
                                 <button
-                                  onClick={() => handleScheduleInterview(cand)}
+                                  onClick={() => handleScheduleClick(cand)}
                                   disabled={schedulingCandidateId === cand.id}
                                   className="w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow-md transition-all cursor-pointer active:scale-95 flex items-center justify-center space-x-1.5 disabled:opacity-70 disabled:cursor-not-allowed"
                                 >
@@ -3214,6 +3269,79 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* PROPOSED DATES MODAL */}
+          {showProposedDatesModal && candidateToSchedule && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div 
+                className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm"
+                onClick={() => setShowProposedDatesModal(false)}
+              ></div>
+              <div className="relative w-full max-w-md bg-slate-900 border border-slate-700/50 rounded-2xl shadow-2xl shadow-indigo-500/10 p-6 z-10 animate-fade-in-up">
+                <div className="flex items-center justify-between mb-5">
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    <svg className="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    Propose Interview Dates
+                  </h3>
+                  <button 
+                    onClick={() => setShowProposedDatesModal(false)}
+                    className="text-slate-500 hover:text-white transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                
+                <p className="text-sm text-slate-300 mb-5 leading-relaxed">
+                  Provide specific dates (comma-separated) for <span className="font-semibold text-white">{candidateToSchedule.name}</span> to choose from.
+                </p>
+                
+                <div className="space-y-4 mb-6">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                      Proposed Dates
+                    </label>
+                    <input 
+                      type="text" 
+                      value={proposedDatesInput}
+                      onChange={(e) => setProposedDatesInput(e.target.value)}
+                      placeholder="e.g. Jul 20, Jul 21, Jul 22"
+                      className="w-full bg-slate-950/50 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all placeholder:text-slate-600"
+                    />
+                  </div>
+                </div>
+                
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  <button 
+                    onClick={() => setShowProposedDatesModal(false)}
+                    className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={() => {
+                      const datesList = proposedDatesInput.split(',').map(d => d.trim()).filter(d => d);
+                      executeScheduleInterview(candidateToSchedule, datesList.length > 0 ? datesList : ['Next 3 Business Days']);
+                    }}
+                    disabled={schedulingCandidateId === candidateToSchedule.id}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-sm font-bold shadow-md transition-all flex items-center justify-center min-w-[140px]"
+                  >
+                    {schedulingCandidateId === candidateToSchedule.id ? (
+                      <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    ) : (
+                      'Send Schedule'
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           )}
