@@ -141,15 +141,8 @@ async def get_all_candidates(
                             p_days = iv.transcript.get("preferred_days", [])
                             r_dates = iv.transcript.get("resolved_dates", [])
                             slots = iv.transcript.get("preferred_slots", [])
-                            all_days = list(p_days) + list(r_dates)
-                            extra_days = []
-                            for d in all_days:
-                                m = re.search(r'(?:Jul|July|07)[\s\-]?(\d{1,2})', str(d), re.IGNORECASE)
-                                if m:
-                                    dnum = int(m.group(1))
-                                    extra_days.extend([f"July {dnum}", f"Jul {dnum}", f"2026-07-{dnum:02d}"])
-                            all_days = sorted(list(set(all_days + extra_days)))
-                            dates_str = ", ".join(all_days) if all_days else iv.scheduled_at.strftime("%Y-%m-%d")
+                            dates_list = r_dates if r_dates else p_days
+                            dates_str = ", ".join([str(d) for d in dates_list]) if dates_list else iv.scheduled_at.strftime("%Y-%m-%d")
                             slots_str = ", ".join(slots) if slots else iv.scheduled_at.strftime("%I:%M %p UTC")
                             interview_date_str = f"{dates_str} @ {slots_str}"
                         else:
@@ -527,6 +520,14 @@ async def get_candidate_profile(
             except Exception as auto_gen_err:
                 logger.warning(f"Auto-synthesis during get_candidate_profile error: {auto_gen_err}")
 
+        print(f"\n========================================================")
+        print(f"[TERMINAL DATE CHECK LOGIC for {current_user.email}]")
+        print(f"  -> status:         {candidate.status}")
+        print(f"  -> proposed_dates: {candidate.proposed_dates}")
+        print(f"  -> interviewDate:  {interview_date_str}")
+        print(f"  -> scheduledAtISO: {scheduled_at_iso}")
+        print(f"========================================================\n")
+
         return {
             "status": "success",
             "profile": {
@@ -602,20 +603,38 @@ async def confirm_candidate_availability(
         if req.days:
             today_idx = now.weekday()
             for d in req.days:
-                if d in DAY_MAP:
-                    day_idx = DAY_MAP[d]
+                d_str = str(d).strip()
+                if d_str in DAY_MAP:
+                    day_idx = DAY_MAP[d_str]
                     delta = (day_idx - today_idx) % 7
                     if delta == 0:  # If selected day is today, schedule for next week
                         delta = 7
                     item_date = now + timedelta(days=delta)
                     resolved_dates.append(item_date.strftime("%Y-%m-%d"))
                 else:
-                    m = re.search(r'(?:Jul|July|07)[\s\-]?(\d{1,2})', str(d), re.IGNORECASE)
-                    if m:
-                        dnum = int(m.group(1))
-                        resolved_dates.append(f"2026-07-{dnum:02d}")
-                    elif re.search(r'2026-(\d{2})-(\d{2})', str(d)):
-                        resolved_dates.append(str(d))
+                    # Check DD-MM-YYYY or DD/MM/YYYY
+                    m_ddmmyy = re.match(r'^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$', d_str)
+                    if m_ddmmyy:
+                        day_val = int(m_ddmmyy.group(1))
+                        month_val = int(m_ddmmyy.group(2))
+                        year_val = int(m_ddmmyy.group(3))
+                        resolved_dates.append(f"{year_val:04d}-{month_val:02d}-{day_val:02d}")
+                    else:
+                        # Check YYYY-MM-DD or YYYY/MM/DD
+                        m_yyyymmdd = re.match(r'^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})$', d_str)
+                        if m_yyyymmdd:
+                            year_val = int(m_yyyymmdd.group(1))
+                            month_val = int(m_yyyymmdd.group(2))
+                            day_val = int(m_yyyymmdd.group(3))
+                            resolved_dates.append(f"{year_val:04d}-{month_val:02d}-{day_val:02d}")
+                        else:
+                            # Check Jul 20, July 21
+                            m_name = re.search(r'(Jan|Feb|Mar|Apr|May|Jun|Jul|July|Aug|Sep|Oct|Nov|Dec)[a-z]*[\s\-]+(\d{1,2})', d_str, re.IGNORECASE)
+                            if m_name:
+                                m_map = {"jan":1,"feb":2,"mar":3,"apr":4,"may":5,"jun":6,"jul":7,"july":7,"aug":8,"sep":9,"oct":10,"nov":11,"dec":12}
+                                month_num = m_map.get(m_name.group(1).lower(), 7)
+                                day_num = int(m_name.group(2))
+                                resolved_dates.append(f"2026-{month_num:02d}-{day_num:02d}")
             
             # Sort resolved dates chronologically
             resolved_dates = sorted(list(set(resolved_dates)))
@@ -639,17 +658,27 @@ async def confirm_candidate_availability(
         if resolved_dates:
             earliest_date_str = resolved_dates[0]
             try:
-                dt_parts = [int(p) for p in earliest_date_str.split('-')]
+                parts = [int(p) for p in re.split(r'[-/]', earliest_date_str.strip())]
+                if parts[0] >= 2024:
+                    year_val, month_val, day_val = parts[0], parts[1], parts[2]
+                elif len(parts) == 3 and parts[2] >= 2024:
+                    day_val, month_val, year_val = parts[0], parts[1], parts[2]
+                elif len(parts) == 3 and parts[2] < 100:
+                    day_val, month_val, year_val = parts[0], parts[1], 2000 + parts[2]
+                else:
+                    year_val, month_val, day_val = parts[0], parts[1], parts[2]
+
                 scheduled_at = datetime(
-                    year=dt_parts[0],
-                    month=dt_parts[1],
-                    day=dt_parts[2],
+                    year=year_val,
+                    month=month_val,
+                    day=day_val,
                     hour=hour,
                     minute=0,
                     second=0,
                     tzinfo=dt_timezone.utc
                 )
-            except Exception:
+            except Exception as e:
+                logger.error(f"Error parsing date {earliest_date_str}: {e}")
                 scheduled_date = now + timedelta(days=min_delta)
                 scheduled_at = datetime(
                     year=scheduled_date.year,
@@ -761,7 +790,9 @@ async def confirm_candidate_availability(
         return {
             "status": "success",
             "message": "Availability preferences successfully saved and interview slot confirmed.",
-            "scheduledAt": scheduled_at.strftime("%Y-%m-%d @ %I:%M %p UTC")
+            "scheduledAt": scheduled_at.strftime("%Y-%m-%d @ %I:%M %p UTC"),
+            "scheduledAtISO": scheduled_at.isoformat() if hasattr(scheduled_at, "isoformat") else str(scheduled_at),
+            "interviewDate": f"{', '.join(resolved_dates if resolved_dates else req.days)} @ {', '.join(req.time_slots if req.time_slots else ['9:00 AM UTC'])}"
         }
     except Exception as exc:
         await db.rollback()

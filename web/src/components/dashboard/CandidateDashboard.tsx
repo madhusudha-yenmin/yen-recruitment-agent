@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { User, CandidateTab } from '../../types';
 import { getApiUrl } from '../../utils/api';
 import { useProctoring } from '../../hooks/useProctoring';
@@ -52,7 +52,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
 
   // AI Interview Studio & Mock Interview State
   const [isMockInterviewMode, setIsMockInterviewMode] = useState<boolean>(false);
-  const [isForceUnlocked, setIsForceUnlocked] = useState<boolean>(true); // Temporarily unlocked for user check (`question seal akirkatha mtum remove panikiriya chk panitu`)
+  const [isForceUnlocked, setIsForceUnlocked] = useState<boolean>(false); // Assessment locked until scheduled interview date & time is met
   const [messages, setMessages] = useState<{ sender: 'ai' | 'candidate'; text: string; timestamp: string }[]>([
     {
       sender: 'ai',
@@ -68,6 +68,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState<number>(0);
   const [answeredQs, setAnsweredQs] = useState<{ [idx: number]: { answer: string; timestamp: string } }>({});
   const [isAssessmentFinished, setIsAssessmentFinished] = useState<boolean>(false);
+  const [studioTimerSeconds, setStudioTimerSeconds] = useState<number>(20 * 60); // 20-minute overall timer
 
   const getMockPracticeQuestions = (role: string = "Software Engineer", skills: string[] = ["Core Stack"]) => {
     return [
@@ -110,43 +111,128 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
       return { isUnlocked: false, reason: "Your interview date & time slot have not been confirmed yet. Please confirm your availability preferences first." };
     }
 
-    // Check exact ISO timestamp if present
-    if (profile.scheduledAtISO) {
-      const schedTime = new Date(profile.scheduledAtISO).getTime();
-      if (!isNaN(schedTime) && new Date().getTime() >= schedTime) {
-        return { isUnlocked: true, reason: "" };
-      }
-    }
-
-    // Check against current date & time window
     const todayDateObj = new Date();
-    const todayDay = (todayDateObj.getFullYear() === 2026 && todayDateObj.getMonth() === 6) ? todayDateObj.getDate() : 14;
+    const currentYear = todayDateObj.getFullYear();
+    const currentMonth = todayDateObj.getMonth();
+    const currentDay = todayDateObj.getDate();
+    const currentHour = todayDateObj.getHours();
+    const todayTimestamp = new Date(currentYear, currentMonth, currentDay).getTime();
 
-    let earliestDay: number | null = null;
-    const matchJuly = profile.interviewDate.match(/July (\d+)/g);
-    if (matchJuly) {
-      const days = matchJuly.map(m => parseInt(m.replace("July ", ""), 10)).filter(d => !isNaN(d));
-      if (days.length > 0) earliestDay = Math.min(...days);
-    }
-    if (earliestDay === null) {
-      const matchIso = profile.interviewDate.match(/2026-07-(\d+)/g);
-      if (matchIso) {
-        const days = matchIso.map(m => parseInt(m.replace("2026-07-", ""), 10)).filter(d => !isNaN(d));
-        if (days.length > 0) earliestDay = Math.min(...days);
+    // Collect all timestamps corresponding to dates found in profile.interviewDate, scheduledAtISO, or proposedDates
+    const targetTimestamps: number[] = [];
+
+    // 1. Check confirmed interview date and ISO scheduled time first
+    const confirmedText = `${profile.interviewDate || ''} ${profile.scheduledAtISO || ''}`;
+    const hasDigits = /\d{2,4}/.test(confirmedText) && profile.interviewDate !== "Awaiting slot";
+    const textToCheck = hasDigits ? confirmedText : `${confirmedText} ${(profile.proposedDates || []).join(' ')}`;
+    console.log("[CHECK_TIME_LOCK_LOGIC] checking text:", { textToCheck, proposedDates: profile.proposedDates, hasDigits });
+
+    // 1. Check DD/MM/YY, DD-MM-YYYY, or DD/MM/YYYY (e.g. 20-07-2026, 20/7/26, 21-07-2026)
+    const slashRegex = /\b(\d{1,2})[-\/](\d{1,2})[-\/](\d{2,4})\b/g;
+    let match;
+    while ((match = slashRegex.exec(textToCheck)) !== null) {
+      const dayNum = parseInt(match[1], 10);
+      const monthNum = parseInt(match[2], 10) - 1; // 0-indexed
+      let yearNum = parseInt(match[3], 10);
+      if (yearNum < 100) yearNum += 2000;
+      if (!isNaN(dayNum) && !isNaN(monthNum) && !isNaN(yearNum)) {
+        targetTimestamps.push(new Date(yearNum, monthNum, dayNum).getTime());
       }
     }
 
-    if (earliestDay !== null && earliestDay > todayDay) {
-      return { isUnlocked: false, reason: `Assessment sealed. Scheduled for ${profile.interviewDate}. Questions will become visible automatically when your session date arrives.` };
+    // 2. Check YYYY-MM-DD or YYYY/MM/DD (e.g. 2026-07-20)
+    const isoRegex = /\b(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})\b/g;
+    while ((match = isoRegex.exec(textToCheck)) !== null) {
+      const yearNum = parseInt(match[1], 10);
+      const monthNum = parseInt(match[2], 10) - 1;
+      const dayNum = parseInt(match[3], 10);
+      if (!isNaN(dayNum) && !isNaN(monthNum) && !isNaN(yearNum)) {
+        targetTimestamps.push(new Date(yearNum, monthNum, dayNum).getTime());
+      }
     }
-    if (earliestDay !== null && earliestDay === todayDay) {
-      if (profile.interviewDate.includes("2:00 PM") || profile.interviewDate.includes("Afternoon")) {
-        if (todayDateObj.getHours() < 14) {
-          return { isUnlocked: false, reason: `Today is your interview day (${profile.interviewDate}), but your afternoon slot (2:00 PM) has not started yet.` };
+
+    // 3. Check Jul/July/Aug XX (e.g. Jul 20, July 21)
+    const monthNamesRegex = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|July|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*(\d{1,2})\b/gi;
+    const monthMap: Record<string, number> = {
+      jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, july: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
+    };
+    while ((match = monthNamesRegex.exec(textToCheck)) !== null) {
+      const mStr = match[1].toLowerCase();
+      const monthNum = monthMap[mStr] ?? 6;
+      const dayNum = parseInt(match[2], 10);
+      if (!isNaN(dayNum)) {
+        targetTimestamps.push(new Date(currentYear, monthNum, dayNum).getTime());
+      }
+    }
+
+    if (targetTimestamps.length > 0) {
+      // Use Math.max so that when multiple date strings/fallback ISOs exist (e.g. 20-07-2026 alongside today's date),
+      // the actual scheduled future date takes precedence over any old/default timestamp.
+      const primaryTargetTimestamp = Math.max(...targetTimestamps);
+
+      // If today is strictly BEFORE the scheduled date (e.g. today is Jul 15, scheduled is Jul 20)
+      if (todayTimestamp < primaryTargetTimestamp) {
+        const targetDateObj = new Date(primaryTargetTimestamp);
+        const formattedTarget = targetDateObj.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }).replace(/\//g, '-');
+        const outcome = {
+          isUnlocked: false,
+          reason: `Assessment sealed until your scheduled date (${profile.interviewDate && profile.interviewDate !== "Awaiting slot" ? profile.interviewDate : formattedTarget}). Questions will become accessible automatically on your interview day.`
+        };
+        console.log("[checkTimeLockStatus] LOCKED (future date):", outcome, { primaryTargetTimestamp, todayTimestamp, formattedTarget });
+        return outcome;
+      }
+
+      // If today IS the target interview day, check if the scheduled hour has arrived yet
+      if (todayTimestamp === primaryTargetTimestamp) {
+        let requiredHour = 0;
+        if (/9:00 AM|Morning/i.test(textToCheck)) requiredHour = 9;
+        else if (/2:00 PM|14:00|Afternoon/i.test(textToCheck)) requiredHour = 14;
+        else if (/6:00 PM|18:00|Evening/i.test(textToCheck)) requiredHour = 18;
+        else {
+          const matchTime = textToCheck.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+          if (matchTime) {
+            let h = parseInt(matchTime[1], 10);
+            if (matchTime[3].toUpperCase() === 'PM' && h < 12) h += 12;
+            if (matchTime[3].toUpperCase() === 'AM' && h === 12) h = 0;
+            requiredHour = h;
+          }
+        }
+
+        if (currentHour < requiredHour) {
+          const outcome = {
+            isUnlocked: false,
+            reason: `Today is your interview day (${profile.interviewDate}), but your scheduled time slot has not started yet. Assessment will unlock around ${requiredHour > 12 ? requiredHour - 12 : requiredHour}:00 ${requiredHour >= 12 ? 'PM' : 'AM'}.`
+          };
+          console.log("[checkTimeLockStatus] LOCKED (same day, earlier hour):", outcome);
+          return outcome;
         }
       }
     }
 
+    // Check exact ISO timestamp directly if present
+    if (profile.scheduledAtISO) {
+      const schedTime = new Date(profile.scheduledAtISO).getTime();
+      if (!isNaN(schedTime) && new Date().getTime() < schedTime) {
+        const formattedDate = new Date(profile.scheduledAtISO).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+        const outcome = {
+          isUnlocked: false,
+          reason: `Assessment sealed until your scheduled date & time: ${formattedDate}. The studio questions will unlock automatically once your interview session starts.`
+        };
+        console.log("[checkTimeLockStatus] LOCKED (ISO timestamp future):", outcome);
+        return outcome;
+      }
+    }
+
+    if (targetTimestamps.length === 0 && !profile.scheduledAtISO) {
+      const outcome = {
+        isUnlocked: false,
+        reason: "Your interview schedule has not been confirmed yet. Assessment remains sealed until HR confirms your scheduled interview date and time."
+      };
+      console.log("[checkTimeLockStatus] LOCKED (not scheduled yet):", outcome);
+      return outcome;
+    }
+
+    console.log("[checkTimeLockStatus] UNLOCKED (scheduled time arrived):", { profile });
     return { isUnlocked: true, reason: "" };
   };
   // ── Webcam consent gate — modal shown once when entering the studio tab ──
@@ -157,53 +243,79 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
     if (activeTab !== 'studio') setWebcamConsented(false);
   }, [activeTab]);
 
+  const answeredQsRef = useRef(answeredQs);
+  useEffect(() => {
+    answeredQsRef.current = answeredQs;
+  }, [answeredQs]);
+
+  useEffect(() => {
+    if (activeTab === 'studio' && webcamConsented && !isAssessmentFinished) {
+      const interval = setInterval(() => {
+        setStudioTimerSeconds((prev) => {
+          if (prev <= 1) {
+            clearInterval(interval);
+            setIsAssessmentFinished(true);
+            syncAnswersToBackend(answeredQsRef.current, true);
+            showToast("⏰ 20-minute interview time limit expired! Assessment automatically closed and submitted with attended answers.", "success");
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(interval);
+    } else if (activeTab !== 'studio' || !webcamConsented) {
+      setStudioTimerSeconds(20 * 60);
+    }
+  }, [activeTab, webcamConsented, isAssessmentFinished]);
+
   // ── Proctoring (activates only AFTER webcam consent, inside studio tab) ──
   const proctoring = useProctoring(activeTab === 'studio' && webcamConsented);
 
-  useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        const token = localStorage.getItem('yen_access_token');
-        const apiUrl = getApiUrl();
-        const res = await fetch(`${apiUrl}/api/v1/recruitment/candidate/profile`, {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.status === 'success' && data.profile) {
-            setProfile(data.profile);
-
-            // Check if availability has been confirmed in database
-            if (data.profile.interviewDate && data.profile.interviewDate !== "Awaiting slot") {
-              setIsAvailabilitySaved(true);
-            } else {
-              setIsAvailabilitySaved(false);
-            }
-
-            // Populate dynamic welcome message based on parsed candidate details
-            const name = data.profile.name || user.name;
-            const role = data.profile.role || "AI Specialist";
-            const skills = (data.profile.skills && data.profile.skills.length > 0)
-              ? data.profile.skills.slice(0, 3).join(', ')
-              : "Python, FastAPI, and LangGraph";
-
-            setMessages([
-              {
-                sender: 'ai',
-                text: `Hello ${name}! I am the YEN AI Interview Agent. Congratulations on progressing to the technical interview stage for the ${role} role! Today, we will explore your technical experience with ${skills}. Are you ready to begin your assessment?`,
-                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-              }
-            ]);
-          }
+  const fetchProfile = async () => {
+    try {
+      const token = localStorage.getItem('yen_access_token');
+      const apiUrl = getApiUrl();
+      const res = await fetch(`${apiUrl}/api/v1/recruitment/candidate/profile`, {
+        headers: {
+          Authorization: `Bearer ${token}`
         }
-      } catch (err) {
-        console.error("Failed to load candidate profile:", err);
-      } finally {
-        setLoadingProfile(false);
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === 'success' && data.profile) {
+          setProfile(data.profile);
+
+          // Check if availability has been confirmed in database
+          if (data.profile.interviewDate && data.profile.interviewDate !== "Awaiting slot") {
+            setIsAvailabilitySaved(true);
+          } else {
+            setIsAvailabilitySaved(false);
+          }
+
+          // Populate dynamic welcome message based on parsed candidate details
+          const name = data.profile.name || user.name;
+          const role = data.profile.role || "AI Specialist";
+          const skills = (data.profile.skills && data.profile.skills.length > 0)
+            ? data.profile.skills.slice(0, 3).join(', ')
+            : "Python, FastAPI, and LangGraph";
+
+          setMessages([
+            {
+              sender: 'ai',
+              text: `Hello ${name}! I am the YEN AI Interview Agent. Congratulations on progressing to the technical interview stage for the ${role} role! Today, we will explore your technical experience with ${skills}. Are you ready to begin your assessment?`,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            }
+          ]);
+        }
       }
-    };
+    } catch (err) {
+      console.error("Failed to load candidate profile:", err);
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+
+  useEffect(() => {
     fetchProfile();
   }, [user.name]);
 
@@ -258,6 +370,14 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
       const data = await res.json();
       if (res.ok && data.status === 'success') {
         setIsAvailabilitySaved(true);
+        if (data.scheduledAtISO || data.interviewDate) {
+          setProfile(prev => prev ? {
+            ...prev,
+            interviewDate: data.interviewDate || prev.interviewDate,
+            scheduledAtISO: data.scheduledAtISO || prev.scheduledAtISO
+          } : prev);
+        }
+        await fetchProfile();
         showToast("✓ Availability Preferences Saved! Your slot is confirmed & synced with HR.", "success");
       } else {
         showToast(data.detail || "Failed to save availability preferences.", "error");
@@ -350,13 +470,20 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
     }, 1500);
   };
 
+  const timeLockOutcome = checkTimeLockStatus();
+
   const sidebarItems: { id: CandidateTab; label: string; icon: string; badge?: string; badgeColor?: string }[] = [
     { id: 'overview', label: 'My Profile & Applications', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z', badge: 'Active Stage 3', badgeColor: 'bg-purple-500/20 text-purple-300' },
     { id: 'availability', label: 'Availability Screen', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', badge: isAvailabilitySaved ? 'Confirmed' : 'Pending', badgeColor: isAvailabilitySaved ? 'bg-purple-500/20 text-purple-300' : 'bg-amber-500/20 text-amber-300' },
-    { id: 'studio', label: 'AI Interview Panel', icon: 'M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z', badge: 'In Progress', badgeColor: 'bg-indigo-500/20 text-indigo-300' },
+    ...(timeLockOutcome.isUnlocked
+      ? [{ id: 'studio' as CandidateTab, label: 'AI Interview Panel', icon: 'M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z', badge: 'In Progress', badgeColor: 'bg-indigo-500/20 text-indigo-300' }]
+      : []),
   ];
 
-  const currentTabInfo = sidebarItems.find(item => item.id === activeTab);
+  const currentTabInfo = sidebarItems.find(item => item.id === activeTab) || {
+    id: activeTab,
+    label: activeTab === 'studio' ? 'AI Interview Panel (Sealed)' : activeTab === 'availability' ? 'Availability Screen' : 'My Profile & Applications'
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex selection:bg-purple-500 selection:text-white">
@@ -459,15 +586,17 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
 
           <div className="flex items-center space-x-4">
             <span className="text-xs text-slate-400 hidden sm:inline">Active Application: <strong className="text-purple-300">{profile?.role || "Senior AI Backend Engineer"}</strong></span>
-            <button
-              onClick={() => setActiveTab('studio')}
-              className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-xs shadow-md shadow-purple-600/20 transition-all cursor-pointer flex items-center space-x-1.5"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-              </svg>
-              <span>Enter AI Studio</span>
-            </button>
+            {timeLockOutcome.isUnlocked && (
+              <button
+                onClick={() => setActiveTab('studio')}
+                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-xs shadow-md shadow-purple-600/20 transition-all cursor-pointer flex items-center space-x-1.5"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                </svg>
+                <span>Enter AI Studio</span>
+              </button>
+            )}
           </div>
         </header>
 
@@ -771,33 +900,49 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
 
           {/* VIEW 3: AI INTERVIEW PANEL (CASE 1: OFFICIAL ASSESSMENT TIME-LOCKED & SEALED) */}
           {activeTab === 'studio' && !checkTimeLockStatus().isUnlocked && !isMockInterviewMode && (
-            <div className="space-y-6">
-              <div className="p-10 rounded-3xl bg-slate-900/90 border border-slate-800 shadow-2xl space-y-6 text-center max-w-3xl mx-auto my-6 animate-in fade-in duration-300">
-                <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-amber-500/20 via-purple-500/20 to-pink-500/20 border border-amber-500/30 flex items-center justify-center mx-auto text-4xl shadow-xl animate-pulse">
+            <div className="space-y-6 animate-in fade-in duration-300">
+              <div className="p-10 rounded-3xl bg-slate-900/95 border-2 border-red-500/50 shadow-2xl space-y-6 text-center max-w-3xl mx-auto my-6">
+                <div className="w-20 h-20 rounded-3xl bg-red-500/20 border-2 border-red-500 flex items-center justify-center mx-auto text-4xl shadow-xl animate-pulse">
                   🔒
                 </div>
                 <div className="space-y-3 max-w-xl mx-auto">
-                  <h2 className="text-2xl font-extrabold text-white tracking-tight">Official HR Assessment Sealed Until Scheduled Time</h2>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    Per HR & AI Studio security protocol, official technical assessment questions remain strictly hidden until your scheduled interview date and time window.
+                  <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-red-500/20 border border-red-500/40 text-red-400 font-extrabold text-xs uppercase tracking-wider animate-bounce">
+                    <span>⚠️ Session Locked</span>
+                  </div>
+                  <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight">AI Interview Session is Currently Locked</h2>
+                  <p className="text-xs md:text-sm text-slate-300 leading-relaxed">
+                    Per HR security protocol, your official technical assessment is strictly sealed and cannot be accessed before your scheduled interview date & time.
                   </p>
                 </div>
-                <div className="p-5 rounded-2xl bg-slate-950/80 border border-slate-800 max-w-lg mx-auto space-y-3 text-left shadow-inner">
+                <div className="p-6 rounded-2xl bg-slate-950/90 border border-slate-800 max-w-lg mx-auto space-y-3.5 text-left shadow-inner">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-slate-400 font-semibold">Scheduled Date & Time:</span>
-                    <span className="font-mono font-bold text-purple-300 bg-purple-500/10 px-3 py-1.5 rounded-xl border border-purple-500/20">
+                    <span className="font-mono font-bold text-purple-300 bg-purple-500/15 px-3.5 py-1.5 rounded-xl border border-purple-500/30">
                       {profile?.interviewDate || "Awaiting slot"}
                     </span>
                   </div>
-                  <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-900">
-                    <span className="text-slate-400 font-semibold">Visibility Status:</span>
-                    <span className="text-amber-400 font-bold flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-                      <span>Locked — Waiting for session date & time</span>
+                  <div className="flex items-center justify-between text-xs pt-3 border-t border-slate-900">
+                    <span className="text-slate-400 font-semibold">Access Status:</span>
+                    <span className="text-red-400 font-black flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
+                      <span>LOCKED — Access Denied</span>
                     </span>
                   </div>
-                  <div className="text-[11px] text-slate-400 pt-2 border-t border-slate-900 leading-normal">
-                    💡 <strong className="text-slate-300">Lock Reason:</strong> {checkTimeLockStatus().reason}
+                  <div className="text-xs text-slate-300 pt-3 border-t border-slate-900 leading-normal bg-slate-900/50 p-3 rounded-xl border border-slate-800/80">
+                    💡 <strong className="text-amber-300">Lock Details:</strong> {checkTimeLockStatus().reason}
+                  </div>
+                  <div className="flex items-center justify-between text-xs pt-3 border-t border-slate-900">
+                    <span className="text-slate-400 font-semibold">Demo Control:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsForceUnlocked(true);
+                        showToast("Unlocked AI Interview Panel! It is now visible in the left sidebar menu.", "success");
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 font-bold text-xs border border-purple-500/30 transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <span>⚡ [Demo] Force Unlock & Show in Menu</span>
+                    </button>
                   </div>
                 </div>
 
@@ -828,16 +973,6 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                     className="px-5 py-3 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-extrabold text-xs shadow-lg shadow-purple-600/30 transition-all cursor-pointer shrink-0 flex items-center gap-1.5"
                   >
                     <span>⚡ Start Mock Interview</span>
-                  </button>
-                </div>
-
-                <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setIsForceUnlocked(true)}
-                    className="text-slate-500 hover:text-slate-400 text-[11px] underline transition-colors cursor-pointer"
-                  >
-                    ⚡ [Tester/Demo] Force Unlock Official Assessment Now
                   </button>
                 </div>
               </div>
@@ -927,7 +1062,19 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                         </p>
                       </div>
 
-                      <div className="flex items-center gap-3 shrink-0">
+                      <div className="flex items-center gap-3 shrink-0 flex-wrap justify-end">
+                        <div className={`px-4 py-2 rounded-xl font-mono font-black text-xs flex items-center gap-2 border shadow-lg ${
+                          studioTimerSeconds <= 300 
+                            ? 'bg-red-500/20 text-red-400 border-red-500/40 animate-pulse' 
+                            : 'bg-slate-950/90 text-emerald-400 border-slate-800'
+                        }`}>
+                          <span>⏱️ Time Remaining:</span>
+                          <span className="text-sm">
+                            {Math.floor(studioTimerSeconds / 60).toString().padStart(2, '0')}:
+                            {(studioTimerSeconds % 60).toString().padStart(2, '0')}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-sans font-medium">/ 20:00</span>
+                        </div>
                         {isMockInterviewMode ? (
                           <button
                             type="button"
@@ -1145,7 +1292,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
       )}
 
       {/* ── Webcam Consent Modal ───────────────────────────────────────────── */}
-      {activeTab === 'studio' && !webcamConsented && (
+      {activeTab === 'studio' && checkTimeLockStatus().isUnlocked && !webcamConsented && !isMockInterviewMode && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" style={{ backdropFilter: 'blur(16px)', backgroundColor: 'rgba(2,6,23,0.85)' }}>
           {/* Glow blobs */}
           <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-indigo-600/20 rounded-full blur-3xl pointer-events-none" />
