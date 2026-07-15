@@ -192,12 +192,38 @@ async def send_notification(
     job_title: str,
     extra_data: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
-    """Sends (or simulates sending) an automated recruitment notification email."""
+    """Sends an automated recruitment notification email using FastMail."""
     content = generate_email_content(notif_type, candidate_name, job_title, extra_data)
     
-    # Log simulated email dispatch
-    logger.info(f"[NOTIFICATION SERVICE] Dispatched {notif_type} to {candidate_email} ({candidate_name})")
-    logger.debug(f"Subject: {content['subject']}\nBody:\n{content['body']}")
+    html_body = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+        <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px;">
+            <h2 style="color: {'#10b981' if notif_type == 'offer_email' else '#ef4444' if notif_type == 'rejection_email' else '#6366f1'};">
+                {'🎉 Offer of Employment' if notif_type == 'offer_email' else 'Update on Your Application' if notif_type == 'rejection_email' else 'Notification'}
+            </h2>
+            <div style="white-space: pre-wrap; font-size: 15px; color: #475569; margin-top: 15px;">
+{content['body']}
+            </div>
+            <hr style="margin-top: 30px; border: 0; border-top: 1px solid #e2e8f0;" />
+            <p style="font-size: 12px; color: #94a3b8;">This is an automated notification from YEN AI Recruitment System.</p>
+        </div>
+    </body>
+    </html>
+    """
+    
+    try:
+        message = MessageSchema(
+            subject=content["subject"],
+            recipients=[candidate_email],
+            body=html_body,
+            subtype=MessageType.html
+        )
+        fm = FastMail(get_mail_config())
+        await fm.send_message(message)
+        logger.info(f"[EMAIL SENT] Dispatched {notif_type} to {candidate_email} ({candidate_name}) | Subject: {content['subject']}")
+    except Exception as e:
+        logger.error(f"[EMAIL FAILED] Could not send {notif_type} to {candidate_email}: {e}")
 
     return {
         "status": "sent",
