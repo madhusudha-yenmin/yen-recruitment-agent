@@ -147,6 +147,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
   const [showProposedDatesModal, setShowProposedDatesModal] = useState(false);
   const [candidateToSchedule, setCandidateToSchedule] = useState<CandidateMatch | null>(null);
   const [proposedDatesInput, setProposedDatesInput] = useState<string>('');
+  const [selectedCandidateDetail, setSelectedCandidateDetail] = useState<CandidateMatch | null>(null);
 
   useEffect(() => {
     const fetchCandidates = async () => {
@@ -457,7 +458,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
           skills: res.parsed.skills.length > 0 ? res.parsed.skills : ['Parsed Candidate'],
           experience: `${res.parsed.experience_years.toFixed(1)} Years`,
           salary: 'Negotiable',
-          location: 'Uploaded Resume',
+          location: res.parsed.location || 'Chennai, India',
           status: 'Pending HR Review',
           recommendation: res.recommendation,
           interviewStatus: 'Pending',
@@ -575,7 +576,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
       skills: res.parsed.skills.length > 0 ? res.parsed.skills : ["Parsed Candidate"],
       experience: `${res.parsed.experience_years.toFixed(1)} Years`,
       salary: "Negotiable",
-      location: "Uploaded Resume",
+      location: res.parsed.location || "Chennai, India",
       status: 'Pending HR Review',
       recommendation: res.recommendation,
       interviewStatus: 'Pending',
@@ -1012,7 +1013,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
       skills: skillsList.length ? skillsList : ["Variant 1", "Python", "FastAPI"],
       experience: "5+ Years",
       salary: "$145,000",
-      location: "Remote",
+      location: location || "Chennai, India",
       status: showAddCardModal,
       recommendation: 'strong-hire',
       interviewStatus: 'Scheduled',
@@ -1047,14 +1048,14 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
     ]);
   };
 
-  const sidebarItems: { id: HRTab; label: string; icon: string; badge?: string | number; badgeColor?: string }[] = [
-    { id: 'overview', label: 'Dashboard Overview', icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z', badge: totalProfilesCount },
+  const sidebarItems: { id: HRTab; label: string; icon: string }[] = [
+    { id: 'overview', label: 'Dashboard Overview', icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z' },
     { id: 'upload-jd', label: 'Upload JD & Orchestrate', icon: 'M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12' },
-    { id: 'ranking', label: 'Candidates Resume', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z', badge: 'Top #1: 96%', badgeColor: 'bg-emerald-500/20 text-emerald-300' },
-    { id: 'interviews', label: 'Interview Status', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', badge: '3 Sched', badgeColor: 'bg-purple-500/20 text-purple-300' },
-    { id: 'calendar', label: 'Calendar Screen', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', badge: candidates.filter(c => c.interviewDate).length, badgeColor: 'bg-indigo-500/20 text-indigo-300' },
-    { id: 'questionnaire', label: 'JD Questionnaire', icon: 'M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z', badge: questions.length },
-    { id: 'approvals', label: 'Approval / Rejected', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z', badge: pendingHitlCount, badgeColor: 'bg-amber-500/20 text-amber-300' },
+    { id: 'ranking', label: 'Candidates Resume', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
+    { id: 'interviews', label: 'Interview Status', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
+    { id: 'calendar', label: 'Calendar Screen', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
+    { id: 'questionnaire', label: 'JD Questionnaire', icon: 'M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z' },
+    { id: 'approvals', label: 'Approval / Rejected', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
     { id: 'score-definition', label: 'Score Definition', icon: 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
   ];
 
@@ -1105,13 +1106,6 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                   </svg>
                   {!isSidebarCollapsed && <span className="truncate">{item.label}</span>}
                 </div>
-
-                {!isSidebarCollapsed && item.badge !== undefined && (
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold shrink-0 ${item.badgeColor ? item.badgeColor : isActive ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
-                    }`}>
-                    {item.badge}
-                  </span>
-                )}
               </button>
             );
           })}
@@ -1233,16 +1227,17 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                       <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider font-semibold">
                         <th className="pb-3 pr-4">Rank & Candidate</th>
                         <th className="pb-3 px-4">Match Score</th>
-                        <th className="pb-3 px-4">Primary Skills</th>
+                        <th className="pb-3 px-4">Role</th>
                         <th className="pb-3 px-4">Experience</th>
                         <th className="pb-3 px-4">Interview Status</th>
                         <th className="pb-3 pl-4 text-right">Hiring Status</th>
+                        <th className="pb-3 pl-4 text-center">Action</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/60">
                       {candidates.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-medium">
+                          <td colSpan={7} className="px-6 py-12 text-center text-slate-400 font-medium">
                             No candidate records found in database. Upload a resume or run a discovery search above to populate.
                           </td>
                         </tr>
@@ -1278,15 +1273,8 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                                 {c.matchScore}%
                               </span>
                             </td>
-                            <td className="py-4 px-4">
-                              <div className="flex flex-wrap gap-1 max-w-xs">
-                                {c.skills.slice(0, 3).map((s, i) => (
-                                  <span key={i} className="px-2 py-0.5 rounded bg-slate-950 text-[10px] text-slate-300 border border-slate-800">
-                                    {s}
-                                  </span>
-                                ))}
-                                {c.skills.length > 3 && <span className="text-[10px] text-slate-500">+{c.skills.length - 3} more</span>}
-                              </div>
+                            <td className="py-4 px-4 font-semibold text-slate-200">
+                              {c.role || "AI Engineer"}
                             </td>
                             <td className="py-4 px-4 text-slate-300">{c.experience}</td>
                             <td className="py-4 px-4">
@@ -1307,6 +1295,15 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                                 {c.status}
                               </span>
                             </td>
+                            <td className="py-4 pl-4 text-center">
+                              <button
+                                onClick={() => setSelectedCandidateDetail(c)}
+                                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 transition-all cursor-pointer font-bold tracking-widest text-xs shadow-sm hover:shadow-indigo-500/10"
+                                title="View Full Candidate Profile & Interview Status"
+                              >
+                                ...
+                              </button>
+                            </td>
                           </tr>
                         ))}
                     </tbody>
@@ -1319,33 +1316,6 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                     <button onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(candidates.length / itemsPerPage)))} disabled={currentPage >= Math.ceil(candidates.length / itemsPerPage)} className="px-3 py-1.5 bg-slate-800 rounded-lg hover:bg-slate-700 disabled:opacity-50">Next</button>
                   </div>
                 )}
-              </div>
-
-              {/* Live Telemetry Stream */}
-              <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800/80 shadow-2xl space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-white flex items-center space-x-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                    <span>Real-Time 5-Agent Telemetry & Cost Audit Trail</span>
-                  </h3>
-                  <span className="text-xs font-mono text-slate-400">PostgreSQL Checkpointer Active</span>
-                </div>
-                <div className="bg-slate-950/80 rounded-2xl border border-slate-800/80 p-4 font-mono text-xs space-y-2 max-h-48 overflow-y-auto">
-                  {logs.map((log) => (
-                    <div key={log.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-900 last:border-0 last:pb-0">
-                      <div className="flex items-center space-x-3">
-                        <span className="text-slate-500">{log.timestamp}</span>
-                        <span className="px-2 py-0.5 rounded font-semibold text-[10px] bg-indigo-500/20 text-indigo-300">{log.agentName}</span>
-                        <span className="text-slate-300">{log.action}</span>
-                      </div>
-                      <div className="flex items-center space-x-3 text-[11px] text-slate-400 shrink-0">
-                        <span>Latency: <strong className="text-slate-200">{log.latency}</strong></span>
-                        <span>•</span>
-                        <span>Cost: <strong className="text-emerald-400">{log.cost}</strong></span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
               </div>
             </div>
           )}
@@ -2034,6 +2004,17 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                             )}
                           </div>
                         )}
+                        {((cand.submittedAnswers && Object.keys(cand.submittedAnswers).length > 0) || cand.interviewStatus === 'Completed' || cand.interviewStatus === 'In Progress' || cand.interviewStatus === 'Inprogress') && (
+                          <div className="pt-3 border-t border-slate-900">
+                            <button
+                              type="button"
+                              onClick={() => setEvalModalCandidate(cand)}
+                              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 text-white font-extrabold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center space-x-1.5 animate-pulse"
+                            >
+                              <span>📊 View AI Evaluation & Responses</span>
+                            </button>
+                          </div>
+                        )}
                         {cand.interviewStatus === 'Pending' && (
                           <div className="pt-3 border-t border-slate-900 space-y-2">
                             {cand.matchScore > 50 ? (
@@ -2464,23 +2445,25 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                     </p>
                   </div>
                   <div className="flex items-center space-x-3 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => fetchDynamicQuestions(true)}
-                      disabled={isGeneratingQuestions}
-                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-bold text-xs shadow-lg flex items-center space-x-2 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
-                    >
-                      {isGeneratingQuestions ? (
-                        <>
-                          <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                          <span>Synthesizing via Agent...</span>
-                        </>
-                      ) : (
-                        <>
-                          <span>⚡ Synthesize 15 Dynamic Questions</span>
-                        </>
-                      )}
-                    </button>
+                    {(Boolean(jobTitle.trim() || selectedQuestionnaireCandId !== null)) && (
+                      <button
+                        type="button"
+                        onClick={() => fetchDynamicQuestions(true)}
+                        disabled={isGeneratingQuestions}
+                        className="px-4 py-2 rounded-xl bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-bold text-xs shadow-lg flex items-center space-x-2 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+                      >
+                        {isGeneratingQuestions ? (
+                          <>
+                            <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            <span>Synthesizing via Agent...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>⚡ Synthesize 15 Dynamic Questions</span>
+                          </>
+                        )}
+                      </button>
+                    )}
                     <span className="px-3.5 py-1.5 rounded-full bg-slate-950 border border-slate-800 text-xs font-bold text-slate-300 shrink-0">
                       <span className="text-pink-400 font-mono mr-1">{questions.length}</span> Total Questions
                     </span>
@@ -2623,13 +2606,15 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                       <h4 className="text-base font-extrabold text-white">No Questions Generated Yet</h4>
                       <p className="text-xs text-slate-400 mt-1">Click the button below or top right to dynamically generate 15 interview questions using the Question Agent.</p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => fetchDynamicQuestions(true)}
-                      className="px-5 py-2.5 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-bold text-xs shadow-md transition-all active:scale-95 cursor-pointer inline-flex items-center space-x-2"
-                    >
-                      <span>⚡ Generate 15 Dynamic Questions Now</span>
-                    </button>
+                    {(Boolean(jobTitle.trim() || selectedQuestionnaireCandId !== null)) && (
+                      <button
+                        type="button"
+                        onClick={() => fetchDynamicQuestions(true)}
+                        className="px-5 py-2.5 rounded-xl bg-pink-600 hover:bg-pink-500 text-white font-bold text-xs shadow-md transition-all active:scale-95 cursor-pointer inline-flex items-center space-x-2"
+                      >
+                        <span>⚡ Generate 15 Dynamic Questions Now</span>
+                      </button>
+                    )}
                   </div>
                 ) : null}
                 {questions
@@ -2811,7 +2796,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                                   <span className="text-slate-300 font-semibold">{cand.experience}</span>
                                 </div>
 
-                                {((cand.submittedAnswers && Object.keys(cand.submittedAnswers).length > 0) || cand.interviewStatus === 'Completed' || cand.status === 'Hold') && (col.id === 'Hold' || col.title === 'Review') && (
+                                {((cand.submittedAnswers && Object.keys(cand.submittedAnswers).length > 0) || cand.interviewStatus === 'Completed' || cand.interviewStatus === 'In Progress' || cand.interviewStatus === 'Inprogress' || cand.status === 'Hold') && (
                                   <button
                                     type="button"
                                     onClick={(e) => {
@@ -3137,7 +3122,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
 
           {/* AI Executive Evaluation & Candidate Responses Transcript Modal (`submit ara answers lam evaluate aki hr ku show anum`) */}
           {evalModalCandidate && (
-            <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 overflow-y-auto animate-in fade-in duration-300">
+            <div className="fixed inset-0 z-[70] bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 sm:p-6 overflow-y-auto animate-in fade-in duration-300">
               <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border border-purple-500/40 rounded-3xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto flex flex-col relative">
                 {/* Top Sticky Header Bar */}
                 <div className="p-6 border-b border-slate-800 bg-slate-900/90 sticky top-0 z-20 backdrop-blur-md flex items-center justify-between gap-4">
@@ -3321,6 +3306,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                       onClick={() => {
                         handleDecision(evalModalCandidate.id, 'Offer Sent');
                         setEvalModalCandidate(null);
+                        setSelectedCandidateDetail(null);
                         setActiveTab('approvals');
                         showToast(`🚀 Promoted ${evalModalCandidate.name} to HITL / Offer Stage!`, 'success');
                       }}
@@ -3437,6 +3423,171 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                     ) : (
                       'Send Schedule'
                     )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {selectedCandidateDetail && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div
+                className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm"
+                onClick={() => setSelectedCandidateDetail(null)}
+              ></div>
+              <div className="relative w-full max-w-2xl bg-slate-900 border border-slate-700/60 rounded-3xl shadow-2xl shadow-purple-500/10 p-6 sm:p-8 z-10 max-h-[90vh] overflow-y-auto animate-fade-in-up space-y-6">
+                <div className="flex items-start justify-between border-b border-slate-800/80 pb-4">
+                  <div>
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <span className="px-2.5 py-0.5 rounded-lg bg-purple-500/20 text-purple-300 font-mono font-bold text-xs border border-purple-500/30">
+                        #{selectedCandidateDetail.ranking} Rank
+                      </span>
+                      <h3 className="text-xl font-extrabold text-white tracking-tight">{selectedCandidateDetail.name}</h3>
+                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                        selectedCandidateDetail.matchScore >= 90 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
+                        selectedCandidateDetail.matchScore >= 75 ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' :
+                        'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                      }`}>
+                        {selectedCandidateDetail.matchScore}% Match
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1 flex items-center gap-2">
+                      <span>📧 {selectedCandidateDetail.email}</span>
+                      {selectedCandidateDetail.linkedinUrl && (
+                        <>
+                          <span>•</span>
+                          <a href={selectedCandidateDetail.linkedinUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline font-bold">
+                            LinkedIn Profile ↗
+                          </a>
+                        </>
+                      )}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setSelectedCandidateDetail(null)}
+                    className="p-1.5 rounded-xl bg-slate-950/60 hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Grid Overview */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/80 space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-slate-500">Role</span>
+                    <p className="text-xs font-bold text-purple-300 truncate">{selectedCandidateDetail.role || "AI Engineer"}</p>
+                  </div>
+                  <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/80 space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-slate-500">Experience</span>
+                    <p className="text-xs font-bold text-white">{selectedCandidateDetail.experience}</p>
+                  </div>
+                  <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/80 space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-slate-500">Location</span>
+                    <p className="text-xs font-bold text-white truncate">{selectedCandidateDetail.location}</p>
+                  </div>
+                  <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/80 space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-slate-500">Recommendation</span>
+                    <p className="text-xs font-bold uppercase tracking-wider text-indigo-300">{selectedCandidateDetail.recommendation}</p>
+                  </div>
+                  <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/80 space-y-1">
+                    <span className="text-[10px] uppercase font-bold text-slate-500">Hiring Status</span>
+                    <p className="text-xs font-bold text-white">{selectedCandidateDetail.status}</p>
+                  </div>
+                </div>
+
+                {/* Interview Progress & Status Section */}
+                <div className="p-5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
+                    <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse"></span>
+                      <span>Interview Progress & Status</span>
+                    </h4>
+                    <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                      selectedCandidateDetail.interviewStatus === 'Scheduled' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' :
+                      selectedCandidateDetail.interviewStatus === 'In Progress' || selectedCandidateDetail.interviewStatus === 'Inprogress' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30 animate-pulse' :
+                      selectedCandidateDetail.interviewStatus === 'Completed' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
+                      'bg-slate-800 text-slate-400'
+                    }`}>
+                      ● {selectedCandidateDetail.interviewStatus}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <span className="text-slate-500 font-semibold block mb-0.5">Interview Mode:</span>
+                      <span className="text-slate-200 font-bold">{selectedCandidateDetail.interviewMode || "AI Chat Studio"}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-semibold block mb-0.5">Scheduled Date & Time Slot:</span>
+                      <span className="text-purple-300 font-bold">{selectedCandidateDetail.interviewDate || "Awaiting slot"}</span>
+                    </div>
+                  </div>
+
+                  {/* Evaluation Summary or Questions details if present */}
+                  {selectedCandidateDetail.evaluationDetails && (
+                    <div className="pt-3 border-t border-slate-800/80 space-y-2">
+                      <span className="text-slate-400 font-bold text-xs">AI Evaluation Breakdown:</span>
+                      <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                        <div className="p-2 rounded-xl bg-slate-900 border border-slate-800">
+                          <span className="text-[10px] text-slate-500 block">Technical</span>
+                          <strong className="text-purple-300">{selectedCandidateDetail.evaluationDetails.technical}%</strong>
+                        </div>
+                        <div className="p-2 rounded-xl bg-slate-900 border border-slate-800">
+                          <span className="text-[10px] text-slate-500 block">Communication</span>
+                          <strong className="text-indigo-300">{selectedCandidateDetail.evaluationDetails.communication}%</strong>
+                        </div>
+                        <div className="p-2 rounded-xl bg-slate-900 border border-slate-800">
+                          <span className="text-[10px] text-slate-500 block">Problem Solving</span>
+                          <strong className="text-blue-300">{selectedCandidateDetail.evaluationDetails.problemSolving}%</strong>
+                        </div>
+                        <div className="p-2 rounded-xl bg-slate-900 border border-slate-800">
+                          <span className="text-[10px] text-slate-500 block">Overall</span>
+                          <strong className="text-emerald-400">{selectedCandidateDetail.evaluationDetails.overall}%</strong>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedCandidateDetail.synthesisReport && (
+                    <div className="pt-3 border-t border-slate-800/80 space-y-1 text-xs">
+                      <span className="text-slate-400 font-bold">AI Synthesis Report:</span>
+                      <p className="text-slate-300 bg-slate-900/90 p-3 rounded-xl border border-slate-800 leading-relaxed max-h-36 overflow-y-auto">
+                        {selectedCandidateDetail.synthesisReport}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Primary Skills Tags */}
+                <div className="space-y-2">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Primary Skills ({selectedCandidateDetail.skills.length})</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedCandidateDetail.skills.map((skill, index) => (
+                      <span key={index} className="px-3 py-1 rounded-xl bg-slate-950 border border-slate-800 text-xs font-semibold text-purple-300 shadow-sm">
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  {((selectedCandidateDetail.submittedAnswers && Object.keys(selectedCandidateDetail.submittedAnswers).length > 0) || selectedCandidateDetail.interviewStatus === 'Completed' || selectedCandidateDetail.interviewStatus === 'In Progress' || selectedCandidateDetail.interviewStatus === 'Inprogress') && (
+                    <button
+                      onClick={() => {
+                        setEvalModalCandidate(selectedCandidateDetail);
+                      }}
+                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-violet-600 hover:from-purple-500 hover:to-violet-500 text-white font-extrabold text-xs shadow-lg transition-all cursor-pointer animate-pulse"
+                    >
+                      📊 View AI Evaluation & Responses
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setSelectedCandidateDetail(null)}
+                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg transition-all cursor-pointer"
+                  >
+                    Close Profile Details
                   </button>
                 </div>
               </div>

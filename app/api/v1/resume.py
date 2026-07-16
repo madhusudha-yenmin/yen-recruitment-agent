@@ -74,7 +74,6 @@ async def parse_resumes(
             stmt = select(Candidate).where(Candidate.email == cand_email)
             res = await db.execute(stmt)
             candidate = res.scalar_one_or_none()
-            
             if not candidate:
                 candidate = Candidate(
                     email=cand_email,
@@ -82,6 +81,7 @@ async def parse_resumes(
                     phone=result.parsed.phone,
                     linkedin=result.parsed.linkedin,
                     github=result.parsed.github,
+                    location=result.parsed.location or "Chennai, India",
                     experience=result.parsed.experience_years,
                     status="new"
                 )
@@ -92,6 +92,7 @@ async def parse_resumes(
                 candidate.phone = result.parsed.phone or candidate.phone
                 candidate.linkedin = result.parsed.linkedin or candidate.linkedin
                 candidate.github = result.parsed.github or candidate.github
+                candidate.location = result.parsed.location or candidate.location or "Chennai, India"
                 candidate.experience = result.parsed.experience_years or candidate.experience
 
             # Skip auto-creation of user account and sending email during parsing.

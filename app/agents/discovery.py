@@ -1,9 +1,14 @@
+import os
+import re
+import random
 import logging
 from typing import List, Optional, Dict, Any
 import httpx
+import openai
+import pymupdf
 from pydantic import BaseModel, Field
 from app.core.config import settings
-from app.agents.base import AgentResponse, compute_cache_key, get_cached_llm_response, save_cached_llm_response
+from app.agents.base import AgentResponse
 
 logger = logging.getLogger(__name__)
 
@@ -112,8 +117,6 @@ async def generate_embedding(text: str) -> List[float]:
         return generate_mock_embedding(text)
 
 
-import re
-
 def _get_fallback_job_criteria(job_description: str) -> JobCriteria:
     jd_lower = job_description.lower()
     
@@ -170,7 +173,7 @@ def _get_fallback_candidate_profile(raw_text: str, embedding_vec: List[float]) -
         skills_list = [SkillItem(skill_name="Python", years=3.0, level="intermediate")]
 
     return CandidateProfile(
-        personal_info=PersonalInfo(name=name, email=email, location="Remote"),
+        personal_info=PersonalInfo(name=name, email=email, location="Chennai, India" if "Alice" in raw_text else "Bengaluru, India"),
         skills=skills_list,
         education=[EducationItem(degree="B.S. in Computer Science", institution="Tech University", year="2018")],
         experience=[ExperienceItem(title="Software Engineer", company="Tech Corp", duration="2020 - Present", description=raw_text)],
@@ -214,7 +217,7 @@ async def search_candidates_tool(query: str, criteria: JobCriteria) -> List[Dict
                 "X-API-KEY": settings.SERPER_API_KEY,
                 "Content-Type": "application/json"
             }
-            print(f"\n========== SERPER SEARCH INITIATED ==========")
+            print("\n========== SERPER SEARCH INITIATED ==========")
             print(f"Query executed: {query}")
             
             payload = {"q": query, "num": 10, "page": 1}
@@ -246,6 +249,7 @@ async def search_candidates_tool(query: str, criteria: JobCriteria) -> List[Dict
                     "candidate_id": f"cand-{i+1}",
                     "name": name,
                     "email": email,
+                    "location": criteria.location if criteria.location and criteria.location != "UNKNOWN" else "Bengaluru, India",
                     "raw_resume_text": f"{name}. {snippet}",
                     "resume_url": link
                 })
@@ -253,7 +257,7 @@ async def search_candidates_tool(query: str, criteria: JobCriteria) -> List[Dict
             return candidates
     except Exception as exc:
         logger.error(f"Serper API search failed: {exc}")
-        return fallback
+        return []
 
 
 # --- Unified Candidate Discovery Agent Interface ---

@@ -23,13 +23,13 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
   const [isAvailabilitySaved, setIsAvailabilitySaved] = useState<boolean>(user.availability?.isConfirmed || false);
   const [isSavingAvailability, setIsSavingAvailability] = useState<boolean>(false);
 
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error'; visible: boolean }>({
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning'; visible: boolean }>({
     message: '',
     type: 'success',
     visible: false
   });
 
-  const showToast = (message: string, type: 'success' | 'error') => {
+  const showToast = (message: string, type: 'success' | 'error' | 'warning') => {
     setToast({ message, type, visible: true });
     setTimeout(() => setToast(prev => ({ ...prev, visible: false })), 4000);
   };
@@ -42,6 +42,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
     experience: number;
     status: string;
     role: string;
+    location?: string;
     skills: string[];
     interviewDate?: string;
     scheduledAtISO?: string;
@@ -478,15 +479,13 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
 
   const timeLockOutcome = checkTimeLockStatus();
 
-  const sidebarItems: { id: CandidateTab; label: string; icon: string; badge?: string; badgeColor?: string }[] = [
-    { id: 'overview', label: 'My Profile & Applications', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z', badge: 'Active Stage 3', badgeColor: 'bg-purple-500/20 text-purple-300' },
-    { id: 'availability', label: 'Availability Screen', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', badge: isAvailabilitySaved ? 'Confirmed' : 'Pending', badgeColor: isAvailabilitySaved ? 'bg-purple-500/20 text-purple-300' : 'bg-amber-500/20 text-amber-300' },
+  const sidebarItems: { id: CandidateTab; label: string; icon: string }[] = [
+    { id: 'overview', label: 'My Profile & Applications', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z' },
+    { id: 'availability', label: 'Availability Screen', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
     { 
       id: 'studio' as CandidateTab, 
       label: 'AI Interview Panel', 
-      icon: 'M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z', 
-      badge: timeLockOutcome.isUnlocked ? 'In Progress' : 'Locked', 
-      badgeColor: timeLockOutcome.isUnlocked ? 'bg-indigo-500/20 text-indigo-300' : 'bg-red-500/20 text-red-300' 
+      icon: 'M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z'
     }
   ];
 
@@ -547,13 +546,6 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                   </svg>
                   {!isSidebarCollapsed && <span className="truncate">{item.label}</span>}
                 </div>
-
-                {!isSidebarCollapsed && item.badge && (
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold shrink-0 ${item.badgeColor ? item.badgeColor : isActive ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400'
-                    }`}>
-                    {item.badge}
-                  </span>
-                )}
               </button>
             );
           })}
@@ -647,7 +639,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                       <span className="text-slate-600">•</span>
                       <span>⏱️ {profile?.experience !== undefined ? profile.experience : 6}+ Years Experience</span>
                       <span className="text-slate-600">•</span>
-                      <span>📍 Remote (IST / UTC+5:30)</span>
+                      <span>📍 {profile?.location || "Chennai, India"}</span>
                     </p>
 
                     <div className="flex flex-wrap items-center gap-1.5 pt-1">
