@@ -256,7 +256,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
             clearInterval(interval);
             setIsAssessmentFinished(true);
             syncAnswersToBackend(answeredQsRef.current, true);
-            showToast("⏰ 20-minute interview time limit expired! Assessment automatically closed and submitted with attended answers.", "success");
+            showToast("⏳ Time limit expired! Assessment automatically closed and submitted for evaluation.", "success");
             return 0;
           }
           return prev - 1;
@@ -270,6 +270,15 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
 
   // ── Proctoring (activates only AFTER webcam consent, inside studio tab) ──
   const proctoring = useProctoring(activeTab === 'studio' && webcamConsented);
+
+  // Handle score reaching 0
+  useEffect(() => {
+    if (proctoring.integrityScore <= 0 && activeTab === 'studio' && webcamConsented && !isAssessmentFinished) {
+      setIsAssessmentFinished(true);
+      syncAnswersToBackend(answeredQsRef.current, true);
+      showToast("🚫 Proctoring trust score depleted (0%)! Assessment automatically closed and submitted for evaluation.", "error");
+    }
+  }, [proctoring.integrityScore, activeTab, webcamConsented, isAssessmentFinished]);
 
   const fetchProfile = async () => {
     try {
@@ -370,14 +379,11 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
       const data = await res.json();
       if (res.ok && data.status === 'success') {
         setIsAvailabilitySaved(true);
-        if (data.scheduledAtISO || data.interviewDate) {
-          setProfile(prev => prev ? {
-            ...prev,
-            interviewDate: data.interviewDate || prev.interviewDate,
-            scheduledAtISO: data.scheduledAtISO || prev.scheduledAtISO
-          } : prev);
+        if (data.profile) {
+          setProfile(data.profile);
+        } else {
+          await fetchProfile();
         }
-        await fetchProfile();
         showToast("✓ Availability Preferences Saved! Your slot is confirmed & synced with HR.", "success");
       } else {
         showToast(data.detail || "Failed to save availability preferences.", "error");
@@ -475,9 +481,13 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
   const sidebarItems: { id: CandidateTab; label: string; icon: string; badge?: string; badgeColor?: string }[] = [
     { id: 'overview', label: 'My Profile & Applications', icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z', badge: 'Active Stage 3', badgeColor: 'bg-purple-500/20 text-purple-300' },
     { id: 'availability', label: 'Availability Screen', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z', badge: isAvailabilitySaved ? 'Confirmed' : 'Pending', badgeColor: isAvailabilitySaved ? 'bg-purple-500/20 text-purple-300' : 'bg-amber-500/20 text-amber-300' },
-    ...(timeLockOutcome.isUnlocked
-      ? [{ id: 'studio' as CandidateTab, label: 'AI Interview Panel', icon: 'M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z', badge: 'In Progress', badgeColor: 'bg-indigo-500/20 text-indigo-300' }]
-      : []),
+    { 
+      id: 'studio' as CandidateTab, 
+      label: 'AI Interview Panel', 
+      icon: 'M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z', 
+      badge: timeLockOutcome.isUnlocked ? 'In Progress' : 'Locked', 
+      badgeColor: timeLockOutcome.isUnlocked ? 'bg-indigo-500/20 text-indigo-300' : 'bg-red-500/20 text-red-300' 
+    }
   ];
 
   const currentTabInfo = sidebarItems.find(item => item.id === activeTab) || {
@@ -517,7 +527,14 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
             return (
               <button
                 key={item.id}
-                onClick={() => setActiveTab(item.id)}
+                onClick={() => {
+                  if (item.id === 'studio' && !timeLockOutcome.isUnlocked && !isMockInterviewMode) {
+                    showToast("Session Locked! Accessible only when the interview date and time is met.", "warning");
+                    // DO NOT navigate, stay on current tab
+                  } else {
+                    setActiveTab(item.id);
+                  }
+                }}
                 className={`w-full px-3.5 py-3 rounded-xl text-xs font-semibold transition-all flex items-center justify-between cursor-pointer group ${isActive
                   ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-600/25'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-950/60'
@@ -646,7 +663,13 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
 
                 <div className="flex flex-col sm:flex-row md:flex-col gap-2.5 shrink-0 self-stretch md:self-center border-t md:border-t-0 pt-4 md:pt-0 border-slate-800/80">
                   <button
-                    onClick={() => setActiveTab('studio')}
+                    onClick={() => {
+                      if (!timeLockOutcome.isUnlocked && !isMockInterviewMode) {
+                        showToast("Session Locked! Accessible only when the interview date and time is met.", "warning");
+                      } else {
+                        setActiveTab('studio');
+                      }
+                    }}
                     className="px-5 py-3 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-extrabold text-xs shadow-lg shadow-purple-600/25 transition-all cursor-pointer active:scale-95 flex items-center justify-center space-x-2"
                   >
                     <span>Launch AI Interview Panel</span>
@@ -1027,18 +1050,20 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                         </div>
                       </div>
                       <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCurrentQuestionIdx(0);
-                            setAnsweredQs({});
-                            setIsAssessmentFinished(false);
-                            showToast("Restarted session from Question 1.", "success");
-                          }}
-                          className="px-6 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700 transition-all cursor-pointer shadow-lg"
-                        >
-                          <span>🔄 {isMockInterviewMode ? 'Practice Again From Question 1' : 'Review Assessment From Start'}</span>
-                        </button>
+                        {isMockInterviewMode && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCurrentQuestionIdx(0);
+                              setAnsweredQs({});
+                              setIsAssessmentFinished(false);
+                              showToast("Restarted session from Question 1.", "success");
+                            }}
+                            className="px-6 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700 transition-all cursor-pointer shadow-lg"
+                          >
+                            <span>🔄 Practice Again From Question 1</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
