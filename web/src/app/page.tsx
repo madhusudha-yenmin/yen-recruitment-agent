@@ -11,30 +11,40 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check if landing via an email link (has email query param)
-    const params = new URLSearchParams(window.location.search);
-    const emailParam = params.get('email');
-    if (emailParam) {
-      // Force logout of any previous session to show the login screen
-      localStorage.removeItem('yen_user_session');
-      localStorage.removeItem('yen_access_token');
-      setUser(null);
-      setIsLoading(false);
-      return;
-    }
-
     // Check if user session exists in localStorage for persistence across page refreshes
     const savedUser = localStorage.getItem('yen_user_session');
+    let parsedUser = null;
+
     if (savedUser) {
       try {
-        const parsed = JSON.parse(savedUser);
-        setUser(parsed);
-        setIsLoading(false);
-        return;
+        parsedUser = JSON.parse(savedUser);
       } catch (e) {
         console.error('Failed to parse user session', e);
       }
     }
+
+    // Check if landing via an email link (has email query param)
+    const params = new URLSearchParams(window.location.search);
+    const emailParam = params.get('email');
+
+    if (emailParam) {
+      // If already logged in as this exact email, keep the session and clear the query param
+      if (parsedUser && parsedUser.email === emailParam) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } else {
+        // Different user (or no user), force logout to show login screen
+        localStorage.removeItem('yen_user_session');
+        localStorage.removeItem('yen_access_token');
+        setUser(null);
+        setIsLoading(false);
+        return;
+      }
+    }
+
+    if (parsedUser) {
+      setUser(parsedUser);
+    }
+    
     setIsLoading(false);
   }, []);
 

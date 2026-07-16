@@ -32,8 +32,13 @@ async def parse_resumes(
     files: List[UploadFile] = File(..., description="One or more PDF resume files"),
     job_title: str = Form(default="Software Engineer", description="Active job title for ATS matching"),
     experience: str = Form(default="1+ years", description="Required experience e.g. '3+ years'"),
+    flow_message: str = Form(default=None, description="Flow tracker for debugging"),
     db: AsyncSession = Depends(get_db),
 ):
+    if flow_message:
+        print("\n" + "="*80)
+        print(f"✅ {flow_message}")
+        print("="*80 + "\n")
     """
     Upload one or more PDF resumes.
     Returns ATS score and parsed fields for each resume, sorted high-to-low by ATS score.
@@ -83,6 +88,7 @@ async def parse_resumes(
                     github=result.parsed.github,
                     location=result.parsed.location or "Chennai, India",
                     experience=result.parsed.experience_years,
+                    current_company=job_title,
                     status="new"
                 )
                 db.add(candidate)
@@ -94,6 +100,7 @@ async def parse_resumes(
                 candidate.github = result.parsed.github or candidate.github
                 candidate.location = result.parsed.location or candidate.location or "Chennai, India"
                 candidate.experience = result.parsed.experience_years or candidate.experience
+                candidate.current_company = job_title or candidate.current_company
 
             # Skip auto-creation of user account and sending email during parsing.
             # This is now triggered manually via the 'Schedule Interview' button.
