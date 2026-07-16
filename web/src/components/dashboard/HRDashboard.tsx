@@ -75,6 +75,8 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
   const todayDateObj = new Date();
   const todayDay = (todayDateObj.getFullYear() === 2026 && todayDateObj.getMonth() === 6) ? todayDateObj.getDate() : 13;
 
+  const [jdTitle, setJdTitle] = useState('');
+  const [jdContent, setJdContent] = useState('');
   const [activeTab, setActiveTab] = useState<HRTab>('overview');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const leaderboardRef = useRef<HTMLDivElement>(null);
@@ -85,6 +87,8 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
   const [interviewSearchQuery, setInterviewSearchQuery] = useState('');
   const [schedulingCandidateId, setSchedulingCandidateId] = useState<string | null>(null);
   const [evalModalCandidate, setEvalModalCandidate] = useState<CandidateMatch | null>(null);
+  const [resumeJobTitle, setResumeJobTitle] = useState('');
+  const [resumeJobTitleError, setResumeJobTitleError] = useState('');
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning'; visible: boolean }>({
     message: '',
     type: 'success',
@@ -106,9 +110,10 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
 
   // JD Upload & Orchestrator State
   const [jobTitle, setJobTitle] = useState('');
-  const [experience, setExperience] = useState('1+ years');
-  const [location, setLocation] = useState('Chennai');
+  const [experience, setExperience] = useState('');
+  const [location, setLocation] = useState('');
   const [keywords, setKeywords] = useState('');
+
   const [isRunningWorkflow, setIsRunningWorkflow] = useState(false);
   const [activeStage, setActiveStage] = useState<number | null>(4); // Default paused at HITL (Stage 4)
   const [currentPage, setCurrentPage] = useState(1);
@@ -158,6 +163,20 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
           const data = await res.json();
           if (data && Array.isArray(data.candidates)) {
             setCandidates(data.candidates);
+            
+            // Map JD values from the previous search if candidates exist
+            if (data.candidates.length > 0) {
+              const firstCand = data.candidates[0];
+              setJobTitle(prev => prev || firstCand.role || '');
+              setExperience(prev => prev || firstCand.experience || '');
+              setLocation(prev => prev || firstCand.location || '');
+            } else {
+              // Ensure fields are empty if DB is empty
+              setJobTitle('');
+              setExperience('');
+              setLocation('');
+              setKeywords('');
+            }
           }
         }
       } catch (err) {
@@ -407,6 +426,14 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
     e.preventDefault();
     if (selectedResumes.length === 0) return;
 
+    setResumeJobTitleError('');
+    const finalJobTitle = resumeJobTitle.trim() || jobTitle.trim();
+    if (!finalJobTitle) {
+      console.log("[FLOW 3] No Job Title provided in Resume tab and no globally searched Job Title. Throwing validation error.");
+      setResumeJobTitleError('Please provide a Job Title or perform a JD search first.');
+      return;
+    }
+
     if (uploadProposedDates.trim()) {
       const datesList = uploadProposedDates.split(',').map(d => d.trim()).filter(Boolean);
       const isValidFormat = datesList.every(d => /^\d{4}-\d{2}-\d{2}$/.test(d));
@@ -422,7 +449,18 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
     selectedResumes.forEach(file => {
       formData.append('files', file);
     });
-    formData.append('job_title', jobTitle + (keywords ? `, ${keywords}` : ''));
+    
+    let flowMessage = "";
+    if (resumeJobTitle.trim()) {
+      flowMessage = `[FLOW 2] Parsed resume with manually provided Job Title in Resume tab: '${resumeJobTitle.trim()}'`;
+      console.log(flowMessage);
+    } else if (jobTitle.trim()) {
+      flowMessage = `[FLOW 1] Parsed resume using the previously searched Job Title: '${jobTitle.trim()}'`;
+      console.log(flowMessage);
+    }
+    formData.append('flow_message', flowMessage);
+    
+    formData.append('job_title', finalJobTitle + (keywords ? `, ${keywords}` : ''));
     formData.append('experience', experience);
 
     try {
@@ -462,6 +500,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
           status: 'Pending HR Review',
           recommendation: res.recommendation,
           interviewStatus: 'Pending',
+          role: finalJobTitle,
           interviewMode: 'AI Chat Studio'
         }));
 
@@ -781,7 +820,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
           ...prev
         ]);
         autoEmailSerper.forEach(cand => {
-          handleScheduleClick(cand);
+          executeScheduleInterview(cand, ['20-07-2026', '21-07-2026']);
         });
       }
 
@@ -1369,7 +1408,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                         required
                         value={location}
                         onChange={(e) => setLocation(e.target.value)}
-                        placeholder="e.g., Chennai"
+                        placeholder='e.g., "San Francisco, CA" or "Remote"'
                         className="w-full px-4 py-2.5 rounded-xl bg-slate-950/60 border border-slate-800 text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                       />
                     </div>
@@ -1380,7 +1419,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                         required
                         value={experience}
                         onChange={(e) => setExperience(e.target.value)}
-                        placeholder="e.g., 2+ years"
+                        placeholder='e.g., "3+ years" or "Mid-level"'
                         className="w-full px-4 py-2.5 rounded-xl bg-slate-950/60 border border-slate-800 text-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                       />
                     </div>
@@ -1472,8 +1511,10 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                                   )}
                                 </div>
                                 <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400">
+                                  <span>Role: <strong className="text-slate-200">{cand.role || jobTitle || 'N/A'}</strong></span>
+                                  <span className="opacity-50">•</span>
                                   <span>Experience: <strong className="text-slate-200">{cand.experience}</strong></span>
-                                  <span>•</span>
+                                  <span className="opacity-50">•</span>
                                   <span>Location: <strong className="text-slate-200">{cand.location}</strong></span>
                                 </div>
                                 <div className="flex flex-wrap gap-1.5 pt-2">
@@ -1567,6 +1608,24 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                     </div>
 
                     <form onSubmit={handleParseResumes} className="space-y-4">
+                      {/* Job Title Field for Resume Parsing */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-slate-300">Job Title</label>
+                        <input
+                          type="text"
+                          value={resumeJobTitle}
+                          onChange={(e) => setResumeJobTitle(e.target.value)}
+                          placeholder="Enter Job Title (e.g. Senior Frontend Developer)"
+                          className="w-full px-4 py-2.5 rounded-xl bg-slate-950/60 border border-slate-800 text-slate-100 placeholder-slate-600 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
+                        />
+                        {resumeJobTitleError && (
+                          <p className="text-xs text-red-400 mt-1">{resumeJobTitleError}</p>
+                        )}
+                        {!resumeJobTitleError && jobTitle.trim() && !resumeJobTitle.trim() && (
+                          <p className="text-[10px] text-slate-400 mt-1">Will use previously searched title: <span className="text-indigo-400">{jobTitle.trim()}</span></p>
+                        )}
+                      </div>
+
                       {/* Drag and Drop Zone */}
                       <div className="border-2 border-dashed border-slate-800 hover:border-indigo-500/50 rounded-2xl p-6 transition-all bg-slate-950/40 hover:bg-slate-950/60 relative group flex flex-col items-center justify-center text-center cursor-pointer min-h-[160px]">
                         <input

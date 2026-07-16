@@ -527,12 +527,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
               <button
                 key={item.id}
                 onClick={() => {
-                  if (item.id === 'studio' && !timeLockOutcome.isUnlocked && !isMockInterviewMode) {
-                    showToast("Session Locked! Accessible only when the interview date and time is met.", "warning");
-                    // DO NOT navigate, stay on current tab
-                  } else {
-                    setActiveTab(item.id);
-                  }
+                  setActiveTab(item.id);
                 }}
                 className={`w-full px-3.5 py-3 rounded-xl text-xs font-semibold transition-all flex items-center justify-between cursor-pointer group ${isActive
                   ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-lg shadow-purple-600/25'
@@ -837,8 +832,9 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                           <button
                             type="button"
                             key={day}
-                            onClick={() => toggleDay(day)}
-                            className={`p-4 rounded-2xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-between ${isSelected
+                            onClick={() => !isAvailabilitySaved && toggleDay(day)}
+                            disabled={isAvailabilitySaved}
+                            className={`p-4 rounded-2xl border text-xs font-bold transition-all ${isAvailabilitySaved ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'} flex items-center justify-between ${isSelected
                               ? 'bg-purple-500/20 border-purple-500 text-purple-300 shadow-md shadow-purple-500/10'
                               : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
                               }`}
@@ -864,8 +860,9 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                           <button
                             type="button"
                             key={slot}
-                            onClick={() => toggleSlot(slot)}
-                            className={`p-4 rounded-2xl border text-xs font-bold transition-all cursor-pointer flex items-center justify-between ${isSelected
+                            onClick={() => !isAvailabilitySaved && toggleSlot(slot)}
+                            disabled={isAvailabilitySaved}
+                            className={`p-4 rounded-2xl border text-xs font-bold transition-all ${isAvailabilitySaved ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'} flex items-center justify-between ${isSelected
                               ? 'bg-indigo-500/20 border-indigo-500 text-indigo-300 shadow-md shadow-indigo-500/10'
                               : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
                               }`}
@@ -882,31 +879,39 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                   </div>
 
 
-                  <div className="pt-4 border-t border-slate-800 flex items-center justify-end space-x-4">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedDays([]);
-                        setSelectedSlots([]);
-                        setIsAvailabilitySaved(false);
-                      }}
-                      className="px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 text-xs font-semibold transition-all cursor-pointer"
-                    >
-                      Clear Selections
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={isSavingAvailability}
-                      className="px-8 py-3.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-extrabold text-sm shadow-xl shadow-purple-600/25 transition-all cursor-pointer active:scale-95 disabled:opacity-60 flex items-center justify-center space-x-2"
-                    >
-                      {isSavingAvailability && (
-                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                        </svg>
-                      )}
-                      <span>{isSavingAvailability ? 'Confirming with HR...' : 'Save Availability & Confirm AI Studio Slot'}</span>
-                    </button>
+                  <div className="pt-6 border-t border-slate-800 flex justify-end gap-3">
+                    {!isAvailabilitySaved ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedDays([]);
+                            setSelectedSlots([]);
+                            setIsAvailabilitySaved(false);
+                          }}
+                          className="px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 text-xs font-semibold transition-all cursor-pointer"
+                        >
+                          Clear Selections
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={isSavingAvailability}
+                          className="px-8 py-3.5 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-extrabold text-sm shadow-xl shadow-purple-600/25 transition-all cursor-pointer active:scale-95 disabled:opacity-60 flex items-center justify-center space-x-2"
+                        >
+                          {isSavingAvailability && (
+                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                          )}
+                          <span>{isSavingAvailability ? 'Confirming with HR...' : 'Save Availability & Confirm AI Studio Slot'}</span>
+                        </button>
+                      </>
+                    ) : (
+                      <div className="px-6 py-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold w-full text-center">
+                        ✅ Availability Confirmed. Your selections are locked. The AI Interview Panel will unlock automatically on your scheduled date & time.
+                      </div>
+                    )}
                   </div>
                 </form>
               </div>
@@ -991,20 +996,6 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                   </button>
                 </div>
               </div>
-
-              {/* ── RIGHT: Proctoring Panel ─────────────────────────────────── */}
-              <div className="w-72 shrink-0 sticky top-4">
-                <ProctoringPanel
-                  videoRef={proctoring.videoRef}
-                  violations={proctoring.violations}
-                  integrityScore={proctoring.integrityScore}
-                  isWebcamActive={proctoring.isWebcamActive}
-                  faceStatus={proctoring.faceStatus}
-                  gazeZone={proctoring.gazeZone}
-                  permissionDenied={proctoring.permissionDenied}
-                />
-              </div>
-
             </div>
           )}
 
