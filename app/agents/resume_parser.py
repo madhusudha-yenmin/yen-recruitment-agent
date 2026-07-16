@@ -34,6 +34,7 @@ class ParsedResume(BaseModel):
     phone: Optional[str] = None
     linkedin: Optional[str] = None
     github: Optional[str] = None
+    location: Optional[str] = None
     skills: List[str] = []
     education: List[str] = []
     experience_years: float = 0.0
@@ -76,6 +77,7 @@ class EducationItem(BaseModel):
 
 class SemanticExtraction(BaseModel):
     name: str = Field(description="Candidate's full name")
+    location: Optional[str] = Field(default=None, description="Candidate's current location (city/state)")
     skills: List[str] = Field(description="List of technical and professional skills mentioned")
     education: List[EducationItem] = Field(description="List of educational qualifications")
     employment_history: List[EmploymentHistoryItem] = Field(description="List of professional experience positions")
@@ -246,6 +248,14 @@ def _extract_github(text: str) -> Optional[str]:
         handle = handle.rstrip('-_')
         if handle:
             return f"https://github.com/{handle}"
+    return None
+
+
+def _extract_location(text: str) -> Optional[str]:
+    txt_lower = text.lower()
+    for city in ["Chennai", "Coimbatore", "Bengaluru", "Bangalore", "Hyderabad", "Mumbai", "Pune", "Delhi", "San Francisco", "New York", "London"]:
+        if city.lower() in txt_lower:
+            return city if city != "Bangalore" else "Bengaluru"
     return None
 
 
@@ -527,12 +537,17 @@ def parse_and_score_resume(
             formatted_education.append(edu_str)
 
     # 6. Validate final ParsedResume with Pydantic
+    location_str = semantic.location or _extract_location(text) or "Chennai, India"
+    if location_str and location_str.strip().lower() == "remote":
+        location_str = _extract_location(text) or "Chennai, India"
+
     parsed = ParsedResume.model_validate({
         "name": semantic.name or "Unknown Candidate",
         "email": email,
         "phone": phone,
         "linkedin": linkedin,
         "github": github,
+        "location": location_str,
         "skills": semantic.skills or [],
         "education": formatted_education,
         "experience_years": experience_years,

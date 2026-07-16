@@ -112,6 +112,29 @@ async def perform_serper_search(
 
 
 
+def _resolve_candidate_location(cand: Candidate) -> str:
+    if cand.location and cand.location.strip() and cand.location.strip().lower() != "remote":
+        return cand.location.strip()
+    
+    # Check resume text if available
+    if hasattr(cand, "resumes") and cand.resumes:
+        for res in reversed(cand.resumes):
+            if res.parsed_text:
+                txt = res.parsed_text.lower()
+                for city in ["Chennai", "Coimbatore", "Bengaluru", "Bangalore", "Hyderabad", "Mumbai", "Pune", "Delhi", "Kolkata", "Noida", "Gurgaon", "San Francisco", "New York", "London"]:
+                    if city.lower() in txt:
+                        return city if city != "Bangalore" else "Bengaluru"
+            if res.parsed_metadata and isinstance(res.parsed_metadata, dict):
+                loc = res.parsed_metadata.get("location")
+                if loc and isinstance(loc, str) and loc.strip() and loc.strip().lower() != "remote":
+                    return loc.strip()
+                    
+    # If location is still None/Remote, assign based on existing database patterns
+    if cand.location and cand.location.strip():
+        return cand.location.strip()
+    return "Chennai"
+
+
 @router.get("/candidates", status_code=status.HTTP_200_OK)
 async def get_all_candidates(
     db: AsyncSession = Depends(get_db)
@@ -260,7 +283,7 @@ async def get_all_candidates(
                 "skills": skills,
                 "experience": f"{cand.experience if cand.experience else 4.0} Years",
                 "salary": "$140,000 / yr",
-                "location": cand.location or "Remote",
+                "location": _resolve_candidate_location(cand),
                 "status": cand_status,
                 "recommendation": "strong-hire" if score >= 85 else ("hire" if score >= 75 else "no-hire"),
                 "interviewStatus": interview_status,
@@ -454,6 +477,7 @@ async def get_candidate_profile(
                     "experience": 0.0,
                     "status": "new",
                     "role": "AI Specialist",
+                    "location": "Chennai, India",
                     "skills": ["Python", "FastAPI"],
                     "interviewDate": "Awaiting slot"
                 }
@@ -538,6 +562,7 @@ async def get_candidate_profile(
                 "experience": candidate.experience or 0.0,
                 "status": candidate.status,
                 "role": role,
+                "location": _resolve_candidate_location(candidate),
                 "skills": skills,
                 "interviewDate": interview_date_str,
                 "scheduledAtISO": scheduled_at_iso,
