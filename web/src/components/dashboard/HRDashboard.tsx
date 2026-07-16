@@ -152,7 +152,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
     const fetchCandidates = async () => {
       try {
         const apiUrl = getApiUrl();
-        const res = await fetch(`${apiUrl}/api/v1/recruitment/candidates`);
+        const res = await fetch(`${apiUrl}/api/v1/recruitment/candidates`, { cache: 'no-store' });
         if (res.ok) {
           const data = await res.json();
           if (data && Array.isArray(data.candidates)) {
@@ -1440,39 +1440,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                   </button>
                 </form>
 
-                {/* 5-Agent Stage Tracker Badges */}
-                <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 pt-4 border-t border-slate-800">
-                  {[
-                    { stage: "1. Discovery Agent", desc: "JD analysis, Boolean query & resume indexing", score: "142 Sourced", id: 1 },
-                    { stage: "2. Assessment Agent", desc: "ATS similarity scoring & pool ranking", score: "Top: 96%", id: 2 },
-                    { stage: "3. Interview Agent", desc: "Tailored question gen & studio scheduling", score: "3 Sched", id: 3 },
-                    { stage: "4. HITL Checkpoint", desc: "Execution paused waiting for Recruiter decision", score: "Action Required", id: 4, isHitl: true },
-                    { stage: "5. Decision Agent", desc: "Comparative analytics & offer automation", score: "Ready", id: 5 }
-                  ].map((s) => {
-                    const isActive = activeStage === s.id;
-                    const isPast = activeStage !== null && activeStage > s.id;
-                    return (
-                      <div
-                        key={s.id}
-                        className={`p-4 rounded-2xl border transition-all ${isActive && s.isHitl ? 'bg-amber-500/10 border-amber-500/50 shadow-lg shadow-amber-500/10 animate-pulse' :
-                          isActive ? 'bg-indigo-500/10 border-indigo-500/50 shadow-lg shadow-indigo-500/10' :
-                            isPast ? 'bg-slate-950/60 border-emerald-500/30' : 'bg-slate-950/40 border-slate-800/80 opacity-60'
-                          }`}
-                      >
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className={`text-xs font-bold ${isActive && s.isHitl ? 'text-amber-400' : isActive ? 'text-indigo-400' : isPast ? 'text-emerald-400' : 'text-slate-400'}`}>
-                            {s.stage}
-                          </span>
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${isActive && s.isHitl ? 'bg-amber-500/20 text-amber-300' : isPast ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'
-                            }`}>
-                            {s.score}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-400 leading-relaxed">{s.desc}</p>
-                      </div>
-                    );
-                  })}
-                </div>
+
               </div>
 
               {/* Ranking Leaderboard - shown below Search */}
