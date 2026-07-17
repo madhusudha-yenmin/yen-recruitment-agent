@@ -1,7 +1,9 @@
 import asyncio
+import os
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.api.router import api_router
 from app.smtp_mock_server import start_mock_smtp_server_task
@@ -17,6 +19,12 @@ app = FastAPI(
 async def startup_event():
     # Run the mock SMTP server on port 1025 in the background
     asyncio.create_task(start_mock_smtp_server_task())
+    
+    # Ensure uploads directory exists
+    os.makedirs(os.path.join(os.path.dirname(__file__), "uploads", "resumes"), exist_ok=True)
+
+# Serve uploaded resumes as static files
+app.mount("/uploads", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "uploads")), name="uploads")
 
 # CORS Middleware setup
 app.add_middleware(

@@ -154,6 +154,8 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
   const [proposedDatesInput, setProposedDatesInput] = useState<string>('');
   const [proposedDatesError, setProposedDatesError] = useState<string>('');
   const [selectedCandidateDetail, setSelectedCandidateDetail] = useState<CandidateMatch | null>(null);
+  const [individualUploadingId, setIndividualUploadingId] = useState<string | null>(null);
+  const [resumeViewModalUrl, setResumeViewModalUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchCandidates = async () => {
@@ -581,6 +583,53 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
       ]);
     } finally {
       setIsParsing(false);
+    }
+  };
+
+  const handleUploadIndividualResume = async (e: React.ChangeEvent<HTMLInputElement>, targetCand: CandidateMatch) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    
+    setIndividualUploadingId(targetCand.id);
+    showToast(`Parsing resume for ${targetCand.name}...`, 'warning');
+    
+    const formData = new FormData();
+    formData.append('files', file);
+    formData.append('job_title', jobTitle + (keywords ? `, ${keywords}` : ''));
+    formData.append('experience', experience);
+    formData.append('target_candidate_id', targetCand.id);
+
+    try {
+      const apiUrl = getApiUrl();
+      const response = await fetch(`${apiUrl}/api/v1/resume/parse`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) throw new Error('Failed to parse resume');
+
+      const data = await response.json();
+      const res = data[0]; // We only uploaded 1 file
+
+      // Update local state for this exact candidate
+      setCandidates(prev => prev.map(c => c.id === targetCand.id ? {
+        ...c,
+        matchScore: Math.round(res.ats_score),
+        skills: res.parsed.skills.length > 0 ? res.parsed.skills : c.skills,
+        experience: `${res.parsed.experience_years.toFixed(1)} Years`,
+        location: res.parsed.location || c.location,
+        recommendation: res.recommendation,
+        email: res.parsed.email || c.email, // override if parsed email is different
+        resumeUrl: res.resume_url ? `${getApiUrl()}${res.resume_url}` : undefined,
+      } : c));
+
+      showToast(`Resume mapped successfully! ATS Score: ${Math.round(res.ats_score)}`, 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Error uploading resume for candidate.', 'error');
+    } finally {
+      setIndividualUploadingId(null);
+      e.target.value = ''; // Reset file input so same file can be chosen again if needed
     }
   };
 
@@ -1499,7 +1548,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                                 </p>
                               </div>
                               <div className="flex flex-col gap-2 shrink-0">
-                                {cand.interviewStatus === 'Pending' && (
+                                {(cand.interviewStatus === 'Pending' || cand.interviewStatus === 'Not Scheduled') && (
                                   <button
                                     onClick={() => handleScheduleClick(cand)}
                                     disabled={schedulingCandidateId === cand.id}
@@ -1526,15 +1575,39 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                                     📊 View AI Evaluation & Responses
                                   </button>
                                 )}
-                                <button
-                                  onClick={() => {
-                                    handleDecision(cand.id, 'Offer Sent');
-                                    setActiveTab('approvals');
-                                  }}
-                                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-md transition-all cursor-pointer"
-                                >
-                                  Review in HITL Queue →
-                                </button>
+                                <div className="flex items-center space-x-2 w-full sm:w-auto">
+                                  {cand.resumeUrl && (
+                                    <button
+                                      onClick={() => {
+                                        const url = cand.resumeUrl || '';
+                                        setResumeViewModalUrl(url.startsWith('http') ? url : `${getApiUrl()}${url}`);
+                                      }}
+                                      className="px-4 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-semibold text-xs shadow-md transition-all cursor-pointer"
+                                    >
+                                      View Resume
+                                    </button>
+                                  )}
+                                  <label className={`px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-md transition-all cursor-pointer flex items-center justify-center min-w-[140px] ${individualUploadingId === cand.id ? 'opacity-70 pointer-events-none' : ''}`}>
+                                    {individualUploadingId === cand.id ? (
+                                      <>
+                                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        Uploading...
+                                      </>
+                                    ) : (
+                                      "Upload Resume"
+                                    )}
+                                    <input 
+                                      type="file" 
+                                      accept=".pdf"
+                                      className="hidden" 
+                                      onChange={(e) => handleUploadIndividualResume(e, cand)}
+                                      disabled={individualUploadingId === cand.id}
+                                    />
+                                  </label>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -2038,7 +2111,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                             </button>
                           </div>
                         )}
-                        {cand.interviewStatus === 'Pending' && (
+                        {(cand.interviewStatus === 'Pending' || cand.interviewStatus === 'Not Scheduled') && (
                           <div className="pt-3 border-t border-slate-900 space-y-2">
                             {cand.matchScore > 50 ? (
                               // ATS > 50% → email was auto-sent; show badge + re-send fallback
@@ -3634,6 +3707,40 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
               </div>
             </div>
           )}
+        {/* RESUME VIEW MODAL */}
+        {resumeViewModalUrl !== null && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-slate-900 border border-slate-700/50 rounded-2xl shadow-2xl w-full max-w-7xl flex flex-col overflow-hidden" style={{ height: '90vh' }}>
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/50">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <svg className="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Candidate Resume
+                </h3>
+                <button
+                  onClick={() => setResumeViewModalUrl(null)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex-1 overflow-hidden bg-slate-950">
+                <iframe src={resumeViewModalUrl} className="w-full h-full border-0" title="Resume PDF" />
+              </div>
+              <div className="px-6 py-4 border-t border-slate-800 bg-slate-900/50 flex justify-end">
+                <button
+                  onClick={() => setResumeViewModalUrl(null)}
+                  className="px-6 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs shadow-md transition-all cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         </div>
       </main>

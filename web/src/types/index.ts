@@ -64,4 +64,5 @@ export interface CandidateMatch {
   generatedQuestions?: any[];
   submittedAnswers?: { [key: string]: { question: string; answer: string; category?: string; timestamp?: string; score?: number; feedback?: string } };
   synthesisReport?: string;
+  resumeUrl?: string;
 }

@@ -56,6 +56,7 @@ class ATSResult(BaseModel):
     ats_score: float    # 0–100 weighted composite
     dimensions: List[ATSDimension]
     recommendation: str  # "strong-hire" | "hire" | "no-hire"
+    resume_url: Optional[str] = None
 
 
 # Pydantic models for semantic extraction via LLM

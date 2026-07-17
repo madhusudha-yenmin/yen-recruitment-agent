@@ -294,7 +294,8 @@ async def get_all_candidates(
                 "generatedQuestions": gen_qs,
                 "submittedAnswers": sub_ans,
                 "evaluationDetails": eval_det if eval_det else None,
-                "synthesisReport": syn_rep
+                "synthesisReport": syn_rep,
+                "resumeUrl": f"{settings.API_V1_STR.replace('/api/v1', '')}/uploads/resumes/{cand.resumes[-1].file_url}" if cand.resumes and cand.resumes[-1].file_url else ""
             })
             
         try:

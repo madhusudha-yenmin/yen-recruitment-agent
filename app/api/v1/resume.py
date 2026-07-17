@@ -2,9 +2,10 @@
 Resume Upload & ATS Scoring API
 POST /api/v1/resume/parse  — accepts one or more PDF files + job_title + experience
 """
+import os
 import uuid
 import logging
-from typing import List
+from typing import List, Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ async def parse_resumes(
     files: List[UploadFile] = File(..., description="One or more PDF resume files"),
     job_title: str = Form(default="Software Engineer", description="Active job title for ATS matching"),
     experience: str = Form(default="1+ years", description="Required experience e.g. '3+ years'"),
+    target_candidate_id: Optional[str] = Form(default=None, description="Optional ID to force mapping resume to specific candidate"),
     flow_message: str = Form(default=None, description="Flow tracker for debugging"),
     db: AsyncSession = Depends(get_db),
 ):
@@ -76,9 +78,20 @@ async def parse_resumes(
             cand_email = result.parsed.email or f"{result.parsed.name.lower().replace(' ', '.')}@example.com"
             
             # 1. Upsert Candidate
-            stmt = select(Candidate).where(Candidate.email == cand_email)
-            res = await db.execute(stmt)
-            candidate = res.scalar_one_or_none()
+            candidate = None
+            if target_candidate_id:
+                try:
+                    stmt = select(Candidate).where(Candidate.id == uuid.UUID(target_candidate_id))
+                    res = await db.execute(stmt)
+                    candidate = res.scalar_one_or_none()
+                except ValueError:
+                    pass  # invalid UUID format
+            
+            if not candidate:
+                stmt = select(Candidate).where(Candidate.email == cand_email)
+                res = await db.execute(stmt)
+                candidate = res.scalar_one_or_none()
+                
             if not candidate:
                 candidate = Candidate(
                     email=cand_email,
@@ -106,6 +119,14 @@ async def parse_resumes(
             # This is now triggered manually via the 'Schedule Interview' button.
             pass
             
+            # Save PDF file to disk
+            unique_filename = f"{candidate.id}_{file.filename}"
+            resume_dir = os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "resumes")
+            os.makedirs(resume_dir, exist_ok=True)
+            resume_path = os.path.join(resume_dir, unique_filename)
+            with open(resume_path, "wb") as f:
+                f.write(pdf_bytes)
+
             # 2. Upsert Resume Model
             stmt_res = select(ResumeModel).where(ResumeModel.candidate_id == candidate.id)
             res_m = await db.execute(stmt_res)
@@ -114,13 +135,13 @@ async def parse_resumes(
             if not db_resume:
                 db_resume = ResumeModel(
                     candidate_id=candidate.id,
-                    file_url=file.filename,
+                    file_url=unique_filename,
                     parsed_text=result.parsed.raw_text_preview,
                     parsed_metadata=result.parsed.model_dump()
                 )
                 db.add(db_resume)
             else:
-                db_resume.file_url = file.filename
+                db_resume.file_url = unique_filename
                 db_resume.parsed_text = result.parsed.raw_text_preview
                 db_resume.parsed_metadata = result.parsed.model_dump()
                 
@@ -135,6 +156,13 @@ async def parse_resumes(
                 db.add(cand_skill)
                 
             await db.commit()
+
+            # Set the resume URL in the response
+            from app.core.config import settings
+            result.resume_url = f"{settings.API_V1_STR.replace('/api/v1', '')}/uploads/resumes/{unique_filename}"
+            
+            results.append(result)
+
             logger.info(f"Successfully saved parsed candidate '{candidate.name}' and resume metadata to database.")
         except Exception as db_exc:
             await db.rollback()
