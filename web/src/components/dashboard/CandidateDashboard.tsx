@@ -461,7 +461,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
 
       const aiResponseText = isFinal
         ? "✅ Final answer logged. Please click '⚡ Finalize Assessment 🎉' above to complete."
-        : `✅ Answer #${currentQuestionIdx + 1} recorded. Click 'Next Question ➔' to proceed to Question #${currentQuestionIdx + 2}.`;
+        : `✅ Answer #${currentQuestionIdx + 1} recorded. Automatically transitioning to Question #${currentQuestionIdx + 2}...`;
 
       const aiResponse = {
         sender: 'ai' as const,
@@ -473,7 +473,10 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
       if (isFinal) {
         showToast("🎉 Final answer submitted! Click '⚡ Finalize Assessment 🎉' above.", "success");
       } else {
-        showToast("✅ Answer submitted! Click 'Next Question ➔' to proceed.", "success");
+        showToast("✅ Answer submitted! Automatically loading next question...", "success");
+        const nextIdx = currentQuestionIdx + 1;
+        setCurrentQuestionIdx(nextIdx);
+        setCurrentInput("");
       }
     }, 1500);
   };
@@ -1132,31 +1135,8 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                       </div>
 
                       <div className="flex items-center gap-3 self-end sm:self-center">
-                        {/* Previous button permanently locked  */}
-                        <span className="px-3.5 py-2 rounded-xl bg-slate-900/80 border border-slate-800 text-slate-500 font-bold text-xs flex items-center gap-1.5 cursor-not-allowed opacity-70" title="Returning to previous questions is strictly disabled per assessment protocol.">
-                          <span>🚫 Previous Question (`Locked`)</span>
-                        </span>
-
-                        {/* Next button ONLY enabled after answering */}
-                        {currentQuestionIdx < totalQs - 1 ? (
-                          <button
-                            type="button"
-                            disabled={!isCurrentAnswered || isSynthesizing}
-                            onClick={() => {
-                              const nextIdx = currentQuestionIdx + 1;
-                              setCurrentQuestionIdx(nextIdx);
-                              setCurrentInput(""); // Keep input box clean without any prefix prompt (`remove this and keep my response`)
-                              showToast(`Loaded Question ${nextIdx + 1} of ${totalQs}!`, 'success');
-                            }}
-                            className={`px-6 py-2.5 rounded-xl font-extrabold text-xs transition-all flex items-center gap-2 shadow-lg ${isCurrentAnswered
-                              ? 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-emerald-500/25 cursor-pointer transform active:scale-95'
-                              : 'bg-slate-900 border border-slate-800 text-slate-500 cursor-not-allowed opacity-50'
-                              }`}
-                            title={!isCurrentAnswered ? "Complete current question first" : "Advance to next question"}
-                          >
-                            <span>Next Question ➔</span>
-                          </button>
-                        ) : (
+                        {/* Only show Finalize button on the last question */}
+                        {currentQuestionIdx >= totalQs - 1 && (
                           <button
                             type="button"
                             disabled={!isCurrentAnswered || isSynthesizing}
