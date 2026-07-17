@@ -19,7 +19,7 @@ export interface User {
     timezone: string;
     isConfirmed?: boolean;
   };
-  interviewStatus?: 'Scheduled' | 'Pending' | 'In Progress' | 'Completed' | 'Inprogress';
+  interviewStatus?: 'Not Scheduled' | 'Scheduled' | 'Pending' | 'In Progress' | 'Completed' | 'Inprogress';
 }
 
 export type AuthView = 'signin' | 'signup' | 'forgot-password' | 'reset-password';
@@ -51,7 +51,7 @@ export interface CandidateMatch {
   location: string;
   status: CandidateStatus;
   recommendation: 'strong-hire' | 'hire' | 'no-hire';
-  interviewStatus: 'Scheduled' | 'Pending' | 'In Progress' | 'Completed' | 'Inprogress';
+  interviewStatus: 'Not Scheduled' | 'Scheduled' | 'Pending' | 'In Progress' | 'Completed' | 'Inprogress';
   interviewDate?: string;
   interviewMode?: 'AI Chat Studio' | 'AI Voice Studio' | 'AI' | 'Manual';
   evaluationDetails?: {
