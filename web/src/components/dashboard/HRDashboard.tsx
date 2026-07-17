@@ -152,6 +152,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
   const [showProposedDatesModal, setShowProposedDatesModal] = useState(false);
   const [candidateToSchedule, setCandidateToSchedule] = useState<CandidateMatch | null>(null);
   const [proposedDatesInput, setProposedDatesInput] = useState<string>('');
+  const [proposedDatesError, setProposedDatesError] = useState<string>('');
   const [selectedCandidateDetail, setSelectedCandidateDetail] = useState<CandidateMatch | null>(null);
 
   useEffect(() => {
@@ -163,20 +164,6 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
           const data = await res.json();
           if (data && Array.isArray(data.candidates)) {
             setCandidates(data.candidates);
-            
-            // Map JD values from the previous search if candidates exist
-            if (data.candidates.length > 0) {
-              const firstCand = data.candidates[0];
-              setJobTitle(prev => prev || firstCand.role || '');
-              setExperience(prev => prev || firstCand.experience || '');
-              setLocation(prev => prev || firstCand.location || '');
-            } else {
-              // Ensure fields are empty if DB is empty
-              setJobTitle('');
-              setExperience('');
-              setLocation('');
-              setKeywords('');
-            }
           }
         }
       } catch (err) {
@@ -669,13 +656,13 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
 
   const handleScheduleClick = (cand: CandidateMatch) => {
     setCandidateToSchedule(cand);
-    setProposedDatesInput('20-07-2026, 21-07-2026'); // Example default
+    setProposedDatesInput('');
+    setProposedDatesError('');
     setShowProposedDatesModal(true);
   };
 
   const executeScheduleInterview = async (cand: CandidateMatch, proposedDates: string[]) => {
     setSchedulingCandidateId(cand.id);
-    setShowProposedDatesModal(false);
     try {
       const apiUrl = getApiUrl();
       const response = await fetch(`${apiUrl}/api/v1/resume/schedule-interview`, {
@@ -749,6 +736,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
       );
     } finally {
       setSchedulingCandidateId(null);
+      setShowProposedDatesModal(false);
     }
   };
 
@@ -786,6 +774,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
           linkedinUrl: c.resume_url || "",
           matchScore: Math.round(c.overall_score || 95 - index), // Mock a score based on search rank
           ranking: c.ranking_position || index + 1,
+          role: jobTitle, // Add the searched role to the candidate profile
           skills: c.matching_skills || ["Matches Query"], // Simplified for bypass mode
           experience: c.experience_years ? `${c.experience_years} Years` : experience, // Default to queried experience
           salary: "Negotiable",
@@ -797,48 +786,19 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
         };
       });
 
-      setCandidates(newCandidates);
+      setCandidates(prev => {
+        const updated = [...newCandidates];
+        prev.forEach(c => {
+          const alreadyIn = updated.some(e => e.email === c.email || e.name === c.name);
+          if (!alreadyIn) updated.push(c);
+        });
+        return updated;
+      });
       setCurrentPage(1);
       setLeaderboardPage(1);
 
-      // Auto-send scheduling email ONLY for candidates with ATS/match score > 50% (after ranking)
-      const autoEmailSerper = newCandidates.filter(c => c.matchScore > 50);
-      const belowThresholdSerper = newCandidates.filter(c => c.matchScore <= 50);
 
-      if (autoEmailSerper.length > 0) {
-        setLogs(prev => [
-          {
-            id: `log-${Date.now()}-auto-email`,
-            timestamp: new Date().toLocaleTimeString(),
-            agentName: 'RecruitmentOrchestrator',
-            action: `Auto-dispatching interview invitation emails to ${autoEmailSerper.length} qualified sourced candidate(s) (score > 50%). ${belowThresholdSerper.length > 0 ? `${belowThresholdSerper.length} candidate(s) below 50% require manual scheduling.` : ''}`,
-            latency: '0ms',
-            tokens: 0,
-            cost: '$0.00',
-            status: 'success'
-          },
-          ...prev
-        ]);
-        autoEmailSerper.forEach(cand => {
-          executeScheduleInterview(cand, ['20-07-2026', '21-07-2026']);
-        });
-      }
 
-      if (belowThresholdSerper.length > 0) {
-        setLogs(prev => [
-          {
-            id: `log-${Date.now()}-below-threshold`,
-            timestamp: new Date().toLocaleTimeString(),
-            agentName: 'RecruitmentOrchestrator',
-            action: `${belowThresholdSerper.length} sourced candidate(s) have score ≤ 50% (${belowThresholdSerper.map(c => `${c.name}: ${c.matchScore}%`).join(', ')}). Manual scheduling available via Interview Status tab.`,
-            latency: '0ms',
-            tokens: 0,
-            cost: '$0.00',
-            status: 'warning'
-          },
-          ...prev
-        ]);
-      }
 
       // Scroll to leaderboard after a short delay to let the DOM update
       setTimeout(() => {
@@ -874,6 +834,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
 
     const targetCand = candidates.find(c => c.id === candidateId);
     if (decision === 'Offer Sent' || decision === 'Rejected') {
+      showToast(`📨 Sending ${decision === 'Offer Sent' ? 'approval' : 'rejection'} email to ${targetCand?.email || 'candidate'}...`, 'warning');
       fetch(`http://localhost:8000/api/v1/recruitment/candidates/${candidateId}/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -884,8 +845,11 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
           job_title: targetCand?.role
         })
       }).then(() => {
-        showToast(`📧 Dispatched automated ${decision === 'Offer Sent' ? 'Approval / Offer' : 'Rejection'} email to ${targetCand?.email || 'candidate'}`, 'success');
-      }).catch(err => console.error("Error sending notification email:", err));
+        showToast(`📧 Dispatched ${decision === 'Offer Sent' ? 'Offer' : 'Rejection'} email to ${targetCand?.email || 'candidate'}`, 'success');
+      }).catch(err => {
+        console.error("Error sending notification email:", err);
+        showToast(`Failed to send ${decision === 'Offer Sent' ? 'approval' : 'rejection'} email. Please try again.`, 'error');
+      });
     }
 
     setLogs(prev => [
@@ -893,7 +857,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
         id: `log-${Date.now()}`,
         timestamp: new Date().toLocaleTimeString(),
         agentName: 'HiringDecisionAgent',
-        action: `HITL Decision Processed: Marked ${targetCand?.name} as '${decision}'. Dispatched automated ${decision === 'Offer Sent' ? 'offer letter & studio link' : 'notification'} via email.`,
+        action: `HITL Decision Processed: Marked ${targetCand?.name} as '${decision}'. Dispatched ${decision === 'Offer Sent' ? 'offer letter & studio link' : 'notification'} via email.`,
         latency: '420ms',
         tokens: 340,
         cost: '$0.0011',
@@ -1008,6 +972,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
     setDraggedCandId(null);
 
     if (targetCol === 'Offer Sent' || targetCol === 'Rejected') {
+      showToast(`📨 Sending ${targetCol === 'Offer Sent' ? 'approval' : 'rejection'} email to ${cand.email || cand.name}...`, 'warning');
       fetch(`http://localhost:8000/api/v1/recruitment/candidates/${candId}/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1018,8 +983,11 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
           job_title: cand.role
         })
       }).then(() => {
-        showToast(`📧 Dispatched automated ${targetCol === 'Offer Sent' ? 'Approval / Offer' : 'Rejection'} email to ${cand.email || cand.name}`, 'success');
-      }).catch(err => console.error("Error sending notification email on drop:", err));
+        showToast(`📧 Dispatched ${targetCol === 'Offer Sent' ? 'Offer' : 'Rejection'} email to ${cand.email || cand.name}`, 'success');
+      }).catch(err => {
+        console.error("Error sending notification email on drop:", err);
+        showToast(`Failed to send ${targetCol === 'Offer Sent' ? 'approval' : 'rejection'} email. Please try again.`, 'error');
+      });
     }
 
     setLogs(prev => [
@@ -1089,10 +1057,10 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
 
   const sidebarItems: { id: HRTab; label: string; icon: string }[] = [
     { id: 'overview', label: 'Dashboard Overview', icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z' },
-    { id: 'upload-jd', label: 'Upload JD & Orchestrate', icon: 'M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12' },
-    { id: 'ranking', label: 'Candidates Resume', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
-    { id: 'interviews', label: 'Interview Status', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
-    { id: 'calendar', label: 'Calendar Screen', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
+    { id: 'upload-jd', label: 'Search Profiles', icon: 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z' },
+    { id: 'ranking', label: 'Upload Resume', icon: 'M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12' },
+    { id: 'interviews', label: 'Interview Status', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
+    { id: 'calendar', label: 'Calendar', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
     { id: 'questionnaire', label: 'JD Questionnaire', icon: 'M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z' },
     { id: 'approvals', label: 'Approval / Rejected', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
     { id: 'score-definition', label: 'Score Definition', icon: 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
@@ -1187,9 +1155,6 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
         <header className="h-16 px-6 border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-xl sticky top-0 z-30 flex items-center justify-between shrink-0">
           <div className="flex items-center space-x-3">
             <span className="text-sm font-extrabold text-white tracking-tight">{currentTabInfo?.label}</span>
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-              5-Agent Architecture Active
-            </span>
           </div>
 
           <div className="flex items-center space-x-4">
@@ -1337,10 +1302,10 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                             <td className="py-4 pl-4 text-center">
                               <button
                                 onClick={() => setSelectedCandidateDetail(c)}
-                                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 transition-all cursor-pointer font-bold tracking-widest text-xs shadow-sm hover:shadow-indigo-500/10"
+                                className="px-3 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 hover:text-indigo-100 border border-indigo-500/30 hover:border-indigo-400/60 transition-all cursor-pointer font-semibold text-xs shadow-sm hover:shadow-indigo-500/20"
                                 title="View Full Candidate Profile & Interview Status"
                               >
-                                ...
+                                View
                               </button>
                             </td>
                           </tr>
@@ -3384,11 +3349,18 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
             <div className="fixed top-6 right-6 z-50 animate-in slide-in-from-top-5 fade-in duration-300">
               <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl border backdrop-blur-xl shadow-2xl transition-all ${toast.type === 'success'
                 ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-200 shadow-emerald-950/20'
-                : 'bg-red-950/90 border-red-500/40 text-red-200 shadow-red-950/20'
+                : toast.type === 'warning'
+                  ? 'bg-amber-950/90 border-amber-500/40 text-amber-200 shadow-amber-950/20'
+                  : 'bg-red-950/90 border-red-500/40 text-red-200 shadow-red-950/20'
                 }`}>
                 {toast.type === 'success' ? (
                   <svg className="w-5 h-5 text-emerald-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                ) : toast.type === 'warning' ? (
+                  <svg className="w-5 h-5 text-amber-400 shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
                 ) : (
                   <svg className="w-5 h-5 text-red-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -3439,16 +3411,21 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
 
                 <div className="space-y-4 mb-6">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                      Proposed Dates (YYYY-MM-DD format)
-                    </label>
                     <input
                       type="text"
                       value={proposedDatesInput}
-                      onChange={(e) => setProposedDatesInput(e.target.value)}
-                      placeholder="e.g. 2026-07-20, 2026-07-21, 2026-07-22"
-                      className="w-full bg-slate-950/50 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all placeholder:text-slate-600"
+                      onChange={(e) => { setProposedDatesInput(e.target.value); setProposedDatesError(''); }}
+                      placeholder="e.g. 2026-07-20, 2026-07-21"
+                      className={`w-full bg-slate-950/50 border rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 transition-all placeholder:text-slate-600 ${proposedDatesError ? 'border-red-500 focus:ring-red-500/50' : 'border-slate-700 focus:ring-indigo-500/50'}`}
                     />
+                    {proposedDatesError && (
+                      <p className="mt-2 text-xs font-semibold text-red-400 flex items-center gap-1.5">
+                        <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                        </svg>
+                        {proposedDatesError}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -3462,23 +3439,29 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
                   <button
                     onClick={() => {
                       const datesList = proposedDatesInput.split(',').map(d => d.trim()).filter(d => d);
-                      if (datesList.length > 0) {
-                        const isValidFormat = datesList.every(d => /^\d{4}-\d{2}-\d{2}$/.test(d));
-                        if (!isValidFormat) {
-                          alert('Please enter proposed interview dates strictly in YYYY-MM-DD format (e.g., 2026-07-20, 2026-07-21).');
-                          return;
-                        }
+                      if (datesList.length === 0) {
+                        setProposedDatesError('Please enter at least one proposed date.');
+                        return;
                       }
-                      executeScheduleInterview(candidateToSchedule, datesList.length > 0 ? datesList : ['Next 3 Business Days']);
+                      const isValidFormat = datesList.every(d => /^\d{4}-\d{2}-\d{2}$/.test(d));
+                      if (!isValidFormat) {
+                        setProposedDatesError('Dates must be in YYYY-MM-DD format (e.g. 2026-07-20).');
+                        return;
+                      }
+                      setProposedDatesError('');
+                      executeScheduleInterview(candidateToSchedule, datesList);
                     }}
                     disabled={schedulingCandidateId === candidateToSchedule.id}
-                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-sm font-bold shadow-md transition-all flex items-center justify-center min-w-[140px]"
+                    className={`px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-bold shadow-md transition-all flex items-center justify-center gap-2 min-w-[150px] ${schedulingCandidateId === candidateToSchedule.id ? 'opacity-70 cursor-not-allowed' : 'hover:from-indigo-500 hover:to-purple-500 cursor-pointer'}`}
                   >
                     {schedulingCandidateId === candidateToSchedule.id ? (
-                      <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
+                      <>
+                        <svg className="animate-spin h-4 w-4 text-white shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span>Sending...</span>
+                      </>
                     ) : (
                       'Send Schedule'
                     )}

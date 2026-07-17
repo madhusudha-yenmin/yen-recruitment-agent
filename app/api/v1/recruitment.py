@@ -90,11 +90,13 @@ async def perform_serper_search(
                     name=cand["name"],
                     linkedin=cand["resume_url"],
                     location=req.location,
+                    current_company=req.job_title,
                     status="sourced"
                 )
                 db.add(candidate)
             else:
                 candidate.linkedin = cand["resume_url"] or candidate.linkedin
+                candidate.current_company = req.job_title or candidate.current_company
                 candidate.status = "sourced"
                 
         await db.commit()

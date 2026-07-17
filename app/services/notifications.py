@@ -194,24 +194,65 @@ async def send_notification(
 ) -> Dict[str, Any]:
     """Sends an automated recruitment notification email using FastMail."""
     content = generate_email_content(notif_type, candidate_name, job_title, extra_data)
-    
-    html_body = f"""
-    <html>
-    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
-        <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 10px;">
-            <h2 style="color: {'#10b981' if notif_type == 'offer_email' else '#ef4444' if notif_type == 'rejection_email' else '#6366f1'};">
-                {'🎉 Offer of Employment' if notif_type == 'offer_email' else 'Update on Your Application' if notif_type == 'rejection_email' else 'Notification'}
-            </h2>
-            <div style="white-space: pre-wrap; font-size: 15px; color: #475569; margin-top: 15px;">
+    extra_data = extra_data or {}
+    company_name = extra_data.get("company_name", "YEN AI")
+
+    html_body = ""
+
+    # Determine which template file to use
+    template_file = None
+    if notif_type == "offer_email":
+        template_file = "offer_letter.html"
+    elif notif_type == "rejection_email":
+        template_file = "rejection.html"
+
+    if template_file:
+        template_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "email_templates", template_file)
+        )
+        try:
+            with open(template_path, "r", encoding="utf-8") as f:
+                template_str = f.read()
+
+            t = Template(template_str)
+            html_body = t.safe_substitute(
+                candidate_name=candidate_name,
+                job_title=job_title,
+                company_name=company_name,
+                salary=extra_data.get("salary", "Competitive")
+            )
+        except Exception as template_err:
+            logger.error(f"Failed to load or format {template_file} template: {template_err}")
+            html_body = ""  # Fall through to fallback below
+
+    # Fallback: inline HTML if no template was loaded
+    if not html_body:
+        html_body = f"""
+        <html>
+        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 0; -webkit-font-smoothing: antialiased;">
+            <div style="max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03); border: 1px solid #e2e8f0; overflow: hidden;">
+                <!-- Header -->
+                <div style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); padding: 32px; text-align: center;">
+                    <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.025em;">YEN AI Recruitment</h1>
+                </div>
+                <!-- Content -->
+                <div style="padding: 40px; color: #334155; line-height: 1.6;">
+                    <h2 style="font-size: 20px; font-weight: 700; color: #0f172a; margin-top: 0; margin-bottom: 16px;">{'🎉 Offer of Employment' if notif_type == 'offer_email' else 'Update on Your Application' if notif_type == 'rejection_email' else 'Notification'}</h2>
+                    <div style="white-space: pre-wrap; font-size: 15px; color: #475569; margin-top: 15px;">
 {content['body']}
+                    </div>
+                    <hr style="margin-top: 30px; border: 0; border-top: 1px solid #e2e8f0;" />
+                    <p style="font-size: 12px; color: #94a3b8;">This is an automated notification from YEN AI Recruitment System.</p>
+                </div>
+                <!-- Footer -->
+                <div style="background-color: #f8fafc; padding: 24px 40px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 12px; color: #94a3b8;">
+                    <p style="margin: 0;">Best regards,<br>Talent Acquisition Team, YEN AI</p>
+                </div>
             </div>
-            <hr style="margin-top: 30px; border: 0; border-top: 1px solid #e2e8f0;" />
-            <p style="font-size: 12px; color: #94a3b8;">This is an automated notification from YEN AI Recruitment System.</p>
-        </div>
-    </body>
-    </html>
-    """
-    
+        </body>
+        </html>
+        """
+        
     try:
         message = MessageSchema(
             subject=content["subject"],
@@ -234,3 +275,5 @@ async def send_notification(
         "body": content["body"],
         "sent_at": utc_now_iso()
     }
+
+

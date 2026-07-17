@@ -50,53 +50,6 @@
             margin-bottom: 24px;
             font-size: 15px;
         }
-        .details-card {
-            background-color: #f0fdf4;
-            border: 1px solid #bbf7d0;
-            border-radius: 12px;
-            padding: 24px;
-            margin-bottom: 32px;
-        }
-        .details-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 12px;
-            font-size: 14px;
-            border-bottom: 1px dashed #dcfce7;
-            padding-bottom: 12px;
-        }
-        .details-row:last-child {
-            margin-bottom: 0;
-            border-bottom: none;
-            padding-bottom: 0;
-        }
-        .details-label {
-            font-weight: 600;
-            color: #15803d;
-        }
-        .details-value {
-            font-weight: 700;
-            color: #14532d;
-        }
-        .btn-container {
-            text-align: center;
-            margin-bottom: 32px;
-        }
-        .btn {
-            display: inline-block;
-            background-color: #10b981;
-            color: #ffffff !important;
-            text-decoration: none;
-            padding: 14px 30px;
-            font-weight: 700;
-            font-size: 14px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.2), 0 2px 4px -1px rgba(16, 185, 129, 0.1);
-            transition: all 0.2s ease;
-        }
-        .btn:hover {
-            background-color: #059669;
-        }
         .footer {
             background-color: #f8fafc;
             padding: 24px 40px;
@@ -117,34 +70,13 @@
         </div>
         <div class="content">
             <h2>Dear $candidate_name,</h2>
-            <p>We are absolutely thrilled to offer you the position of <strong>$job_role</strong> at $company_name!</p>
-            <p>Our team was incredibly impressed by your skills, experience, and the discussions during your interview. We believe your expertise will make a significant impact on our ongoing AI products and engineering goals.</p>
-            
-            <div class="details-card">
-                <div class="details-row">
-                    <span class="details-label">Position:</span>
-                    <span class="details-value">$job_role</span>
-                </div>
-                <div class="details-row">
-                    <span class="details-label">Annual Base Salary:</span>
-                    <span class="details-value">$salary</span>
-                </div>
-                <div class="details-row">
-                    <span class="details-label">Proposed Start Date:</span>
-                    <span class="details-value">$start_date</span>
-                </div>
-            </div>
-
-            <p>Please review and sign the full employment agreement using the link below to confirm your acceptance of this offer:</p>
-
-            <div class="btn-container">
-                <a href="$accept_link" class="btn">View & Sign Offer Letter</a>
-            </div>
-
-            <p style="margin-bottom: 0;">We look forward to welcoming you to the $company_name family!</p>
+            <p>We are thrilled to extend an offer of employment for the position of <strong>$job_title</strong> at <strong>$company_name</strong>.</p>
+            <p>Following your impressive performance during the AI and technical interview rounds, our team was deeply impressed by your skills and background.</p>
+            <p>Proposed Compensation: <strong>$salary</strong></p>
+            <p style="margin-bottom: 0;">Please review the attached formal offer letter and let us know if you have any questions.</p>
         </div>
         <div class="footer">
-            <p>Warmest regards,<br>Talent Acquisition Team, $company_name</p>
+            <p>Best regards,<br>The $company_name Recruiting Team</p>
         </div>
     </div>
 </body>
