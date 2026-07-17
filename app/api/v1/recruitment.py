@@ -827,6 +827,39 @@ async def confirm_candidate_availability(
         raise HTTPException(status_code=500, detail="Failed to save availability preferences.")
 
 
+class CandidateInterviewStatusRequest(BaseModel):
+    status: str
+
+@router.patch("/candidate/interview/status", status_code=status.HTTP_200_OK)
+async def update_candidate_interview_status(
+    req: CandidateInterviewStatusRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+) -> Dict[str, Any]:
+    try:
+        stmt = select(Candidate).options(selectinload(Candidate.interviews)).where(Candidate.email == current_user.email)
+        res = await db.execute(stmt)
+        candidate = res.scalar_one_or_none()
+        if candidate:
+            candidate.status = req.status
+            if candidate.interviews:
+                for iv in candidate.interviews:
+                    iv.status = req.status
+            await db.commit()
+            
+            # Broadcast update so HR Dashboard re-renders dynamically
+            try:
+                await manager.broadcast({"event": "candidates_updated"})
+            except Exception as ws_err:
+                logger.error(f"WebSocket broadcast failed in interview status update: {ws_err}")
+                
+        return {"status": "success", "updated_status": req.status}
+    except Exception as exc:
+        await db.rollback()
+        logger.error(f"Error updating candidate interview status: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to update interview status: {exc}")
+
+
 class GenerateJDQuestionsRequest(BaseModel):
     job_title: str
     skills: Optional[List[str]] = None

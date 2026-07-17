@@ -215,10 +215,10 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
         };
 
         socket.onerror = (err) => {
-          console.error('WebSocket error connecting to ' + wsUrl + ':', err);
+          console.warn('WebSocket notification server offline (' + wsUrl + '). Retrying via fallback poll...');
         };
       } catch (err) {
-        console.error('WebSocket initialization error:', err);
+        console.warn('WebSocket initialization fallback:', err);
       }
     };
 
