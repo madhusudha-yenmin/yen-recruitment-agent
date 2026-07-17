@@ -484,9 +484,9 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
           experience: `${res.parsed.experience_years.toFixed(1)} Years`,
           salary: 'Negotiable',
           location: res.parsed.location || 'Chennai, India',
-          status: 'Pending HR Review',
+          status: 'Applied',
           recommendation: res.recommendation,
-          interviewStatus: 'Pending',
+          interviewStatus: 'Not Scheduled',
           role: finalJobTitle,
           interviewMode: 'AI Chat Studio'
         }));
@@ -529,10 +529,9 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
 
           const autoDates = uploadProposedDates.split(',').map(d => d.trim()).filter(Boolean);
 
-          setParsingStatusText('Sending Interview Invites...');
-          // Fire emails in parallel and wait for all to complete
-          const emailPromises = autoEmailCandidates.map(cand => executeScheduleInterview(cand, autoDates));
-          await Promise.all(emailPromises);
+          showToast('Sending Interview Invites...', 'warning');
+          // Fire emails in parallel in the background without blocking the UI loader
+          autoEmailCandidates.forEach(cand => executeScheduleInterview(cand, autoDates));
         }
 
         if (belowThresholdCandidates.length > 0) {
@@ -683,10 +682,10 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
       }
       const resData = await response.json();
 
-      // Update the candidate's interviewStatus to 'Scheduled' and store their unique auto-synthesized questions
+      // Update the candidate's interviewStatus to 'Pending' (awaiting their confirmation)
       setCandidates(prev => prev.map(c => c.id === cand.id ? {
         ...c,
-        interviewStatus: 'Scheduled',
+        interviewStatus: 'Pending',
         interviewDate: 'Awaiting Slot Selection @ -',
         interviewMode: 'AI',
         generatedQuestions: resData.generated_questions || []
@@ -779,9 +778,9 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
           experience: c.experience_years ? `${c.experience_years} Years` : experience, // Default to queried experience
           salary: "Negotiable",
           location: c.location || location, // Default to queried location
-          status: 'Pending HR Review',
+          status: 'Applied',
           recommendation: c.recommendation || 'strong-hire',
-          interviewStatus: 'Pending',
+          interviewStatus: 'Not Scheduled',
           interviewMode: 'AI Chat Studio'
         };
       });
@@ -1058,7 +1057,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
   const sidebarItems: { id: HRTab; label: string; icon: string }[] = [
     { id: 'overview', label: 'Dashboard Overview', icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z' },
     { id: 'upload-jd', label: 'Search Profiles', icon: 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z' },
-    { id: 'ranking', label: 'Upload Resume', icon: 'M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12' },
+    { id: 'ranking', label: 'Manual Upload', icon: 'M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12' },
     { id: 'interviews', label: 'Interview Status', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
     { id: 'calendar', label: 'Calendar', icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
     { id: 'questionnaire', label: 'JD Questionnaire', icon: 'M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z' },

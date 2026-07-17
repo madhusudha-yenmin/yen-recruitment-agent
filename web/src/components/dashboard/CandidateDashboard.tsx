@@ -978,7 +978,7 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                       <span>Want to Practice While You Wait?</span>
                     </h3>
                     <p className="text-[11px] text-slate-300 leading-relaxed">
-                      Try our interactive <strong className="text-purple-300">Mock Interview Studio</strong>. Practice warm-up and behavioral questions right now (`mock interview questionuhm hr la generate akira questions onna irukka kutathu`).
+                      Try our interactive <strong className="text-purple-300">Mock Interview Studio</strong>. Practice warm-up and behavioral questions right now.
                     </p>
                   </div>
                   <button
