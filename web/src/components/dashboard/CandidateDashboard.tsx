@@ -336,7 +336,8 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
 
   const timeWindows = [
     '9:00 AM - 12:00 PM',
-    '2:00 PM - 5:00 PM'
+    '2:00 PM - 5:00 PM',
+    '6:00 PM - 10:00 PM'
   ];
 
   const toggleDay = (day: string) => {
