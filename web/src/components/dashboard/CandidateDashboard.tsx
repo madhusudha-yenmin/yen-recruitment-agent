@@ -70,7 +70,67 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
   const [answeredQs, setAnsweredQs] = useState<{ [idx: number]: { answer: string; timestamp: string } }>({});
   const [isAssessmentFinished, setIsAssessmentFinished] = useState<boolean>(false);
   const [studioTimerSeconds, setStudioTimerSeconds] = useState<number>(20 * 60); // 20-minute overall timer
+  const [webcamConsented, setWebcamConsented] = useState(false);
+  const [showDropoffModal, setShowDropoffModal] = useState<{ visible: boolean; count: number }>({ visible: false, count: 0 });
 
+  // Prevent accidental page refresh during an active interview
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = ''; // Standard modern support
+      return ''; 
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Block F5, Ctrl+R, Cmd+R
+      if (e.key === 'F5' || (e.ctrlKey && e.key === 'r') || (e.metaKey && e.key === 'r')) {
+        e.preventDefault();
+        showToast("Refreshing is restricted during the interview.", "warning");
+      }
+    };
+
+    // Only attach the listeners if we are actively in an unfinished interview
+    // webcamConsented ensures they actually started it, not just reading instructions
+    if (activeTab === 'studio' && webcamConsented && !isAssessmentFinished && !isMockInterviewMode) {
+      const handleUnload = () => {
+        // Send a synchronous-like beacon to the server to mark candidate as quitted
+        const token = localStorage.getItem('yen_access_token');
+        if (token) {
+          fetch(`${getApiUrl()}/api/v1/recruitment/candidate/interview/status`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ status: "Quitted" }),
+            keepalive: true
+          }).catch(() => {});
+        }
+      };
+
+      window.addEventListener('beforeunload', handleBeforeUnload);
+      window.addEventListener('keydown', handleKeyDown);
+      window.addEventListener('unload', handleUnload);
+      
+      return () => {
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+        window.removeEventListener('keydown', handleKeyDown);
+        window.removeEventListener('unload', handleUnload);
+      };
+    }
+  }, [activeTab, webcamConsented, isAssessmentFinished, isMockInterviewMode]);
+
+  // Synchronize interview state to localStorage to catch reloads and drop-offs
+  useEffect(() => {
+    if (activeTab === 'studio' && !isMockInterviewMode) {
+      const state = {
+        started: webcamConsented,
+        isFinished: isAssessmentFinished,
+        answeredQs
+      };
+      localStorage.setItem(`interview_progress_${user.email}`, JSON.stringify(state));
+    }
+  }, [activeTab, webcamConsented, isAssessmentFinished, answeredQs, isMockInterviewMode, user.email]);
   const getMockPracticeQuestions = (role: string = "Software Engineer", skills: string[] = ["Core Stack"]) => {
     return [
       {
@@ -186,9 +246,8 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
       // If today IS the target interview day, check if the scheduled hour has arrived yet
       if (todayTimestamp === primaryTargetTimestamp) {
         let requiredHour = 0;
-        if (/9:00 AM|Morning/i.test(textToCheck)) requiredHour = 9;
-        else if (/2:00 PM|14:00|Afternoon/i.test(textToCheck)) requiredHour = 14;
-        else if (/6:00 PM|18:00|Evening/i.test(textToCheck)) requiredHour = 18;
+        if (/9:00 AM/i.test(textToCheck)) requiredHour = 9;
+        else if (/3:00 PM|15:00/i.test(textToCheck)) requiredHour = 15;
         else {
           const matchTime = textToCheck.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
           if (matchTime) {
@@ -237,12 +296,28 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
     return { isUnlocked: true, reason: "" };
   };
   // ── Webcam consent gate — modal shown once when entering the studio tab ──
-  const [webcamConsented, setWebcamConsented] = useState(false);
 
   // Reset consent each time the candidate leaves the studio so modal re-appears
   useEffect(() => {
     if (activeTab !== 'studio') setWebcamConsented(false);
   }, [activeTab]);
+
+  // Notify backend when the interview officially starts
+  useEffect(() => {
+    if (activeTab === 'studio' && webcamConsented && !isAssessmentFinished && !isMockInterviewMode) {
+      const token = localStorage.getItem('yen_access_token');
+      if (token) {
+        fetch(`${getApiUrl()}/api/v1/recruitment/candidate/interview/status`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ status: "In Progress" })
+        }).catch(() => {});
+      }
+    }
+  }, [activeTab, webcamConsented, isAssessmentFinished, isMockInterviewMode]);
 
   const answeredQsRef = useRef(answeredQs);
   useEffect(() => {
@@ -293,6 +368,44 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
       if (res.ok) {
         const data = await res.json();
         if (data.status === 'success' && data.profile) {
+          // Check for abandoned session
+          const storedStateStr = localStorage.getItem(`interview_progress_${user.email}`);
+          if (storedStateStr) {
+            try {
+              const storedState = JSON.parse(storedStateStr);
+              
+              // If they were already marked as abandoned previously, always lock them out
+              if (storedState.abandoned) {
+                data.profile.status = 'Quitted';
+              } 
+              // If they dropped off just now (started but not finished)
+              else if (storedState.started && !storedState.isFinished) {
+                const numAnswered = Object.keys(storedState.answeredQs || {}).length;
+                
+                setTimeout(() => {
+                  setShowDropoffModal({ visible: true, count: numAnswered });
+                }, 100);
+                
+                // Mark as abandoned locally so it persists across future reloads
+                storedState.abandoned = true;
+                localStorage.setItem(`interview_progress_${user.email}`, JSON.stringify(storedState));
+                
+                // Block them in the UI immediately
+                data.profile.status = 'Quitted';
+
+                // Force sync this failure to the backend just in case the unload beacon failed
+                fetch(`${apiUrl}/api/v1/recruitment/candidate/interview/status`, {
+                  method: 'PATCH',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                  },
+                  body: JSON.stringify({ status: "Quitted" })
+                }).catch(() => {});
+              }
+            } catch (e) {}
+          }
+
           setProfile(data.profile);
 
           // Check if availability has been confirmed in database
@@ -335,9 +448,8 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
     : defaultDaysOfWeek;
 
   const timeWindows = [
-    '9:00 AM - 12:00 PM',
-    '2:00 PM - 5:00 PM',
-    '6:00 PM - 10:00 PM'
+    '9:00 AM - 3:00 PM',
+    '3:00 PM - 9:00 PM'
   ];
 
   const toggleDay = (day: string) => {
@@ -531,6 +643,10 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
               <button
                 key={item.id}
                 onClick={() => {
+                  if (activeTab === 'studio' && item.id !== 'studio' && webcamConsented && !isAssessmentFinished && !isMockInterviewMode) {
+                    showToast("Please complete or submit the assessment before leaving the studio.", "warning");
+                    return;
+                  }
                   setActiveTab(item.id);
                 }}
                 className={`w-full px-3.5 py-3 rounded-xl text-xs font-semibold transition-all flex items-center justify-between cursor-pointer group ${isActive
@@ -795,9 +911,14 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
                   <div className="pt-2">
                     <button
                       onClick={() => setActiveTab('studio')}
-                      className="w-full py-3 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-purple-600/20 transition-all cursor-pointer flex items-center justify-center space-x-2"
+                      disabled={loadingProfile || profile?.status === 'Quitted' || profile?.status === 'Rejected' || profile?.status === 'Hold'}
+                      className={`w-full py-3 rounded-2xl text-white text-xs font-bold shadow-lg transition-all flex items-center justify-center space-x-2 ${
+                        ['Quitted', 'Rejected', 'Hold'].includes(profile?.status || '') 
+                          ? 'bg-slate-800 text-slate-500 opacity-60 cursor-not-allowed shadow-none' 
+                          : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 shadow-purple-600/20 cursor-pointer'
+                      }`}
                     >
-                      <span>Enter AI Interview Studio →</span>
+                      <span>{profile?.status === 'Quitted' ? 'Assessment Locked (Quitted)' : 'Enter AI Interview Studio →'}</span>
                     </button>
                   </div>
                 </div>
@@ -1255,6 +1376,32 @@ export const CandidateDashboard: React.FC<CandidateDashboardProps> = ({ user, on
 
         </div>
       </main>
+
+      {/* ── Custom Drop-off / Completed Modal ── */}
+      {showDropoffModal.visible && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4" style={{ backdropFilter: 'blur(16px)', backgroundColor: 'rgba(2,6,23,0.85)' }}>
+          <div className="relative w-full max-w-md bg-slate-900 border border-red-500/30 rounded-3xl shadow-2xl shadow-red-500/10 overflow-hidden text-center p-8">
+            <div className="w-16 h-16 mx-auto bg-red-500/20 rounded-2xl flex items-center justify-center mb-6 border border-red-500/30">
+              <span className="text-3xl">⚠️</span>
+            </div>
+            <h2 className="text-xl font-black text-white mb-2">Assessment Ended</h2>
+            <p className="text-sm text-slate-400 mb-6 leading-relaxed">
+              You exited or reloaded the screen during an active interview session. 
+              Because this is a timed assessment, your session has been permanently closed.
+            </p>
+            <div className="bg-slate-950/50 rounded-2xl p-4 mb-6 border border-slate-800">
+              <p className="text-xs font-bold text-slate-300">Questions Answered</p>
+              <p className="text-2xl font-black text-white mt-1">{showDropoffModal.count}</p>
+            </div>
+            <button
+              onClick={() => setShowDropoffModal({ visible: false, count: 0 })}
+              className="w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition-all"
+            >
+              Back to Dashboard
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Dynamic Toast Notification Panel */}
       {toast.visible && (

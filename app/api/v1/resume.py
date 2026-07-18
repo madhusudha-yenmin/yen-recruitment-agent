@@ -14,9 +14,10 @@ import string
 import random
 import string
 from pydantic import BaseModel
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Depends, BackgroundTasks
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Depends, BackgroundTasks, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
+from sqlalchemy.orm import selectinload
 from app.db.session import get_db
 from app.models.candidate import Candidate, Resume as ResumeModel, CandidateSkill
 from app.models.user import User, UserRole
@@ -118,30 +119,25 @@ async def parse_resumes(
             # Skip auto-creation of user account and sending email during parsing.
             # This is now triggered manually via the 'Schedule Interview' button.
             pass
-            
-            # Save PDF file to disk
-            unique_filename = f"{candidate.id}_{file.filename}"
-            resume_dir = os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "resumes")
-            os.makedirs(resume_dir, exist_ok=True)
-            resume_path = os.path.join(resume_dir, unique_filename)
-            with open(resume_path, "wb") as f:
-                f.write(pdf_bytes)
-
             # 2. Upsert Resume Model
             stmt_res = select(ResumeModel).where(ResumeModel.candidate_id == candidate.id)
             res_m = await db.execute(stmt_res)
             db_resume = res_m.scalar_one_or_none()
             
+            unique_filename = f"{candidate.id}_{file.filename}"
+
             if not db_resume:
                 db_resume = ResumeModel(
                     candidate_id=candidate.id,
                     file_url=unique_filename,
+                    file_data=pdf_bytes,
                     parsed_text=result.parsed.raw_text_preview,
                     parsed_metadata=result.parsed.model_dump()
                 )
                 db.add(db_resume)
             else:
                 db_resume.file_url = unique_filename
+                db_resume.file_data = pdf_bytes
                 db_resume.parsed_text = result.parsed.raw_text_preview
                 db_resume.parsed_metadata = result.parsed.model_dump()
                 
@@ -158,8 +154,8 @@ async def parse_resumes(
             await db.commit()
 
             # Set the resume URL in the response
-            from app.core.config import settings
-            result.resume_url = f"{settings.API_V1_STR.replace('/api/v1', '')}/uploads/resumes/{unique_filename}"
+            result.resume_url = f"/api/v1/resume/{candidate.id}/pdf"
+            result.candidate_id = str(candidate.id)
             
             results.append(result)
 
@@ -179,8 +175,6 @@ async def parse_resumes(
         print(f"Recommendation: {result.recommendation.upper()}")
         print(f"Skills Found:   {', '.join(result.parsed.skills[:10])}{'...' if len(result.parsed.skills) > 10 else ''}")
         print(f"============================================\n")
-
-        results.append(result)
 
     # Sort by ATS score descending
     results.sort(key=lambda r: r.ats_score, reverse=True)
@@ -228,7 +222,11 @@ async def schedule_interview_api(
             db_user.name = req.name or db_user.name
             
         # 2. Update Candidate status to 'shortlisted' / 'Scheduled' and map applied job role
-        stmt_cand = select(Candidate).where(Candidate.email == req.email)
+        stmt_cand = select(Candidate).options(
+            selectinload(Candidate.skills),
+            selectinload(Candidate.resumes),
+            selectinload(Candidate.interviews)
+        ).where(Candidate.email == req.email)
         res_cand = await db.execute(stmt_cand)
         candidate = res_cand.scalar_one_or_none()
         if candidate:
@@ -285,11 +283,26 @@ async def schedule_interview_api(
                 # Create or update interview record with transcript questions
                 if hasattr(candidate, "interviews") and candidate.interviews:
                     iv = candidate.interviews[0]
-                    iv.transcript = (iv.transcript or {}) | {"generated_questions": questions_data, "job_title": req.job_title}
+                    iv.transcript = (iv.transcript or {}) | {"generated_questions": questions_data, "scheduled_role": req.job_title}
+                    iv.status = "scheduled"
                 else:
+                    from app.models.interview import Interview
+                    from app.models.job import Job
+                    
+                    # Fetch a valid job to link to, or use the first available job
+                    job_stmt = select(Job).where(Job.title.ilike(f"%{req.job_title}%"))
+                    job_res = await db.execute(job_stmt)
+                    job = job_res.scalars().first()
+                    if not job:
+                        job_res = await db.execute(select(Job))
+                        job = job_res.scalars().first()
+                        
+                    if not job:
+                        raise ValueError("No active jobs found in the database. Please upload a Job Description (JD) first before scheduling an interview.")
+
                     new_iv = Interview(
                         candidate_id=candidate.id,
-                        job_id=candidate.id,  # fallback job link
+                        job_id=job.id,  # Properly link to a valid Job ID to satisfy foreign key constraint
                         mode="ai-chat",
                         status="scheduled",
                         transcript={"generated_questions": questions_data, "job_title": req.job_title}
@@ -336,3 +349,23 @@ async def schedule_interview_api(
             status_code=500,
             detail=f"Failed to schedule interview: {str(e)}"
         )
+
+@router.get("/{candidate_id}/pdf")
+async def get_resume_pdf(candidate_id: str, db: AsyncSession = Depends(get_db)):
+    """Serve the raw PDF file directly from the database bytea column."""
+    from sqlalchemy.orm import undefer
+    try:
+        cand_uuid = uuid.UUID(candidate_id)
+        stmt = select(ResumeModel).options(undefer(ResumeModel.file_data)).where(ResumeModel.candidate_id == cand_uuid)
+        res = await db.execute(stmt)
+        resume = res.scalar_one_or_none()
+
+        if not resume or not resume.file_data:
+            raise HTTPException(status_code=404, detail="Resume PDF not found in database for this candidate.")
+
+        return Response(content=resume.file_data, media_type="application/pdf")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid candidate ID format")
+    except Exception as e:
+        logger.error(f"Failed to fetch resume PDF: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error while fetching resume")
