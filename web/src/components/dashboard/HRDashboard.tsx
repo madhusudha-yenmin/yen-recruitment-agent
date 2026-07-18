@@ -403,7 +403,12 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
   const handleResumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const filesArray = Array.from(e.target.files);
-      setSelectedResumes(prev => [...prev, ...filesArray]);
+      setSelectedResumes(prev => {
+        const existingNames = new Set(prev.map(f => f.name));
+        const newFiles = filesArray.filter(f => !existingNames.has(f.name));
+        return [...prev, ...newFiles];
+      });
+      e.target.value = '';
     }
   };
 
@@ -413,7 +418,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
 
   const handleParseResumes = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedResumes.length === 0) return;
+    if (selectedResumes.length === 0 || isParsing) return;
 
     setResumeJobTitleError('');
     const finalJobTitle = resumeJobTitle.trim() || jobTitle.trim();
@@ -488,7 +493,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
           location: res.parsed.location || 'Chennai, India',
           status: 'Applied',
           recommendation: res.recommendation,
-          interviewStatus: 'Not Scheduled',
+          interviewStatus: 'Pending',
           role: finalJobTitle,
           interviewMode: 'AI Chat Studio'
         }));
@@ -583,6 +588,7 @@ export const HRDashboard: React.FC<HRDashboardProps> = ({ user, onSignOut }) => 
       ]);
     } finally {
       setIsParsing(false);
+      setSelectedResumes([]);
     }
   };
 

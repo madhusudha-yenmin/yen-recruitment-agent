@@ -1,6 +1,6 @@
-from sqlalchemy import Column, String, Float, Boolean, ForeignKey
+from sqlalchemy import Column, String, Float, Boolean, ForeignKey, LargeBinary
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, deferred
 try:
     from pgvector.sqlalchemy import Vector  # type: ignore # noqa
 except ImportError:
@@ -52,6 +52,7 @@ class Resume(Base):
 
     candidate_id = Column(UUID(as_uuid=True), ForeignKey("candidates.id"), nullable=False, index=True)
     file_url = Column(String(500), nullable=False)
+    file_data = deferred(Column(LargeBinary, nullable=True))
     parsed_text = Column(String, nullable=True)
     embedding_id = Column(UUID(as_uuid=True), ForeignKey("embeddings.id"), nullable=True)
     

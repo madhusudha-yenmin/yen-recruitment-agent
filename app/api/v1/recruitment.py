@@ -12,6 +12,7 @@ from app.models.candidate import Candidate, Resume as ResumeModel, CandidateSkil
 from app.models.interview import AuditLog, Interview
 from app.graphs.checkpointer import get_checkpointer
 from app.graphs.recruitment_flow import create_recruitment_graph
+from app.core.config import settings
 
 
 class ConfirmAvailabilityRequest(BaseModel):
@@ -168,18 +169,30 @@ async def get_all_candidates(
                             slots = iv.transcript.get("preferred_slots", [])
                             dates_list = r_dates if r_dates else p_days
                             dates_str = ", ".join([str(d) for d in dates_list]) if dates_list else iv.scheduled_at.strftime("%Y-%m-%d")
-                            slots_str = ", ".join(slots) if slots else iv.scheduled_at.strftime("%I:%M %p UTC")
+                            slots_str = ", ".join(slots) if slots else iv.scheduled_at.strftime("%I:%M %p")
                             interview_date_str = f"{dates_str} @ {slots_str}"
                         else:
-                            interview_date_str = iv.scheduled_at.strftime("%Y-%m-%d @ %I:%M %p UTC")
+                            interview_date_str = iv.scheduled_at.strftime("%Y-%m-%d @ %I:%M %p")
                         break
             
             # Per strict user requirement: candidate must stay in "Applied" (Candidates column of Kanban board)
             # until they select an actual interview date (`scheduled_at is not None`).
+            
             # Once an interview date is selected, list under "Pending HR Review" (Scheduled column).
             if has_scheduled_interview:
-                cand_status = "Pending HR Review"
-                interview_status = "Scheduled"
+                # Keep in 'Scheduled' column unless explicitly moved
+                if cand.status in ["Offer Sent", "Rejected", "Hold", "Evaluating", "Evaluated"]:
+                    cand_status = cand.status
+                else:
+                    cand_status = "Pending HR Review"
+                    
+                # Show dynamic real-time interview badge
+                if cand.status in ["In Progress", "Inprogress", "Completed", "Quitted"]:
+                    interview_status = cand.status
+                elif hasattr(cand, "interviews") and cand.interviews and cand.interviews[0].status in ["In Progress", "Completed", "Quitted"]:
+                    interview_status = cand.interviews[0].status
+                else:
+                    interview_status = "Scheduled"
             else:
                 # If they have not selected an interview date yet, keep strictly in "Applied" (Candidates list)
                 # unless they have been explicitly hired/rejected/held
@@ -295,7 +308,7 @@ async def get_all_candidates(
                 "submittedAnswers": sub_ans,
                 "evaluationDetails": eval_det if eval_det else None,
                 "synthesisReport": syn_rep,
-                "resumeUrl": f"{settings.API_V1_STR.replace('/api/v1', '')}/uploads/resumes/{cand.resumes[-1].file_url}" if cand.resumes and cand.resumes[-1].file_url else ""
+                "resumeUrl": f"/api/v1/resume/{cand.id}/pdf" if cand.resumes else ""
             })
             
         try:
@@ -495,7 +508,8 @@ async def get_candidate_profile(
         if candidate.interviews:
             for iv in candidate.interviews:
                 if iv.scheduled_at is not None:
-                    scheduled_at_iso = iv.scheduled_at.isoformat() if hasattr(iv.scheduled_at, "isoformat") else str(iv.scheduled_at)
+                    # Send as a naive ISO string without Z or offset, so the browser parses it exactly as the local time requested.
+                    scheduled_at_iso = iv.scheduled_at.strftime('%Y-%m-%dT%H:%M:%S') if hasattr(iv.scheduled_at, "strftime") else str(iv.scheduled_at)
                     if iv.transcript and isinstance(iv.transcript, dict):
                         if iv.transcript.get("resolved_dates"):
                             dates_str = ", ".join(iv.transcript["resolved_dates"])
@@ -678,8 +692,8 @@ async def confirm_candidate_availability(
         hour = 9
         if req.time_slots:
             first_slot = req.time_slots[0].lower()
-            if "afternoon" in first_slot:
-                hour = 13
+            if "3:00 pm" in first_slot or "15:00" in first_slot or "afternoon" in first_slot:
+                hour = 15
             elif "evening" in first_slot:
                 hour = 18
 
@@ -702,8 +716,7 @@ async def confirm_candidate_availability(
                     day=day_val,
                     hour=hour,
                     minute=0,
-                    second=0,
-                    tzinfo=dt_timezone.utc
+                    second=0
                 )
             except Exception as e:
                 logger.error(f"Error parsing date {earliest_date_str}: {e}")
@@ -714,8 +727,7 @@ async def confirm_candidate_availability(
                     day=scheduled_date.day,
                     hour=hour,
                     minute=0,
-                    second=0,
-                    tzinfo=dt_timezone.utc
+                    second=0
                 )
         else:
             scheduled_date = now + timedelta(days=min_delta)
@@ -725,8 +737,7 @@ async def confirm_candidate_availability(
                 day=scheduled_date.day,
                 hour=hour,
                 minute=0,
-                second=0,
-                tzinfo=dt_timezone.utc
+                second=0
             )
 
         # Upsert interview record
